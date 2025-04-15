@@ -169,6 +169,7 @@ Do
   If k$ <> "" Then 
     cls
     End
+  EndIf
   Pause 1500
 Loop
 

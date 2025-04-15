@@ -165,6 +165,10 @@ Do
     EndIf
     Pause 100
   Next
+  k$ = Inkey$
+  If k$ <> "" Then 
+    cls
+    End
   Pause 1500
 Loop
 
@@ -263,13 +267,6 @@ draw_text_init:
   Pause 50
   Text textX, 250, "SYSTEM 3"
 Return
-
-
-' === Wait for keypress to exit ===
-Do
-  k$ = Inkey$
-Loop Until k$ <> ""
-End
 
 ' === Slice Draw Routine ===
 draw_slice:

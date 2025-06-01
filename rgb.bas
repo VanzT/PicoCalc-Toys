@@ -2,17 +2,17 @@
 ' WS2812 Light Show (MMBasic for PicoMite)
 '
 ' This code drives an 8-LED WS2812 strip on GP28. All color-values
-' are packed in GRB order so that ìredî actually shows red, etc.
+' are packed in GRB order so that ‚Äúred‚Äù actually shows red, etc.
 '
 ' Menu options:
 '   1 = Larson Scanner (pure red)
 '   2 = Static White   (all LEDs white)
 '   3 = Static Orange  (all LEDs orange)
 '   4 = Random Colors
-'   5 = Binary Count (dim green for ì1î bits)
+'   5 = Binary Count (dim green for ‚Äú1‚Äù bits)
 '   6 = Ocean Effect (wave of blue)
 '   7 = Static Dimmable Red (example)
-'   8 = Communication Effect (fade a random color on a 2-pixel ìpairî)
+'   8 = Communication Effect (fade a random color on a 2-pixel ‚Äúpair‚Äù)
 '   9 = Clear all LEDs
 '   0 = Exit, turn all off
 '-------------------------------------------------------------------
@@ -66,6 +66,7 @@ Next i%
 Do
   Cls
   Print "WS2812 Light Show Menu"
+  Print
   Print "1: Larson Scanner"
   Print "2: Static White (all white)"
   Print "3: Static Orange (all orange)"
@@ -77,7 +78,7 @@ Do
   Print "9: Clear LEDs"
   Print "0: Exit"
   Print
-  Print "Press a key (0ñ9) to select an option:"
+  Print "Make a selection: "
 
   ' Wait until a key is pressed
   k$ = ""
@@ -134,11 +135,11 @@ End Sub
 '------------------------------------------------------------
 ' PROCEDURE: StaticRGB
 ' Sets every LED to the same static color, with brightness control
-'   baseR, baseG, baseB range 0Ö255
+'   baseR, baseG, baseB range 0‚Ä¶255
 '------------------------------------------------------------
 ' PROCEDURE: StaticRGB  (RGB-packed for your strip)
 ' Sets every LED to the same static color, with brightness control
-'   baseR, baseG, baseB each 0Ö255
+'   baseR, baseG, baseB each 0‚Ä¶255
 Sub StaticRGB(baseR%, baseG%, baseB%)
   brightness% = 255
 
@@ -155,9 +156,9 @@ Sub StaticRGB(baseR%, baseG%, baseB%)
     k$ = Inkey$
     if k$ <> "" then
     Select Case k$
-      Case Chr$(128)   ' ì+î key on some PicoCalc keymaps
+      Case Chr$(128)   ' ‚Äú+‚Äù key on some PicoCalc keymaps
         brightness% = Min(brightness% + 15, 255)
-      Case Chr$(129)   ' ìñî key on some PicoCalc keymaps
+      Case Chr$(129)   ' ‚Äú‚Äì‚Äù key on some PicoCalc keymaps
         brightness% = Max(brightness% - 15,   0)
       case else
         exit sub
@@ -188,9 +189,9 @@ End Sub
 
 '------------------------------------------------------------
 ' PROCEDURE: BinaryCount
-' Use 8 LEDs as a binary counter (dim green = bit ì1î, off = bit ì0î)
+' Use 8 LEDs as a binary counter (dim green = bit ‚Äú1‚Äù, off = bit ‚Äú0‚Äù)
 Sub BinaryCount
-  dimG% = 31   ' intensity for ì1î bits
+  dimG% = 31   ' intensity for ‚Äú1‚Äù bits
   Do
     For value% = 0 To 255
       For bit% = 0 To LEDCOUNT - 1
@@ -211,7 +212,7 @@ End Sub
 
 '------------------------------------------------------------
 ' PROCEDURE: LarsonScanner
-' Classic ìKnight Riderî red scanner with fading trail
+' Classic ‚ÄúKnight Rider‚Äù red scanner with fading trail
 Sub LarsonScanner
   position%  = 0
   direction% = 1
@@ -230,7 +231,7 @@ Sub LarsonScanner
       b%(i%) = (newR% * &H10000) + (oldG% * &H100) + oldB%
     Next i%
 
-    ' Light the ìheadî pixel in full-bright red (RGB = 0xFF0000)
+    ' Light the ‚Äúhead‚Äù pixel in full-bright red (RGB = 0xFF0000)
     b%(position%) = &HFF0000
 
     Bitbang ws2812 o, GP28, LEDCOUNT, b%()
@@ -252,7 +253,7 @@ End Sub
 
 '------------------------------------------------------------
 ' PROCEDURE: OceanEffect
-' Smooth ìwaveî of blue across the strip
+' Smooth ‚Äúwave‚Äù of blue across the strip
 Sub OceanEffect
   offset% = 0      ' already declared globally
   direction% = 1   ' already declared globally

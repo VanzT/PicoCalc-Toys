@@ -55,6 +55,68 @@ NEXT
 xx = X_OFFSET + 6 * POINT_W
 LINE xx, 0, xx, H, BAR_W, barColor
 
+' === Dice Drawing Function ===
+SUB DrawDice(turnIsWhite)
+  LOCAL x, y, fillCol, pipCol
+  x = INT(xx + BAR_W / 2 - 10 + 50)
+  y = INT(H / 2 - 10)
+
+  IF turnIsWhite THEN
+    fillCol = RGB(240,240,220)
+    pipCol = RGB(0,0,0)
+  ELSE
+    fillCol = RGB(100,60,20)
+    pipCol = RGB(255,255,255)
+  ENDIF
+
+  RBOX x, y, 24, 24, 4, RGB(0,0,0), fillCol
+  RBOX x + 34, y, 24, 24, 4, RGB(0,0,0), fillCol
+    ' === Draw Pips for Static Roll (5 and 6) ===
+  DrawDiePips x, y-1, 4, pipCol
+  DrawDiePips x + 34, y-1, 3, pipCol
+END SUB
+
+' === Dice Pip Drawing Function ===
+SUB DrawDiePips(x, y, val, col)
+  LOCAL cx, cy, r
+  r = 2
+  cx = x + 12
+  cy = y + 12
+
+  SELECT CASE val
+    CASE 1
+      CIRCLE cx, cy, r, , , col, col
+    CASE 2
+      CIRCLE x + 6, y + 6, r, , , col, col
+      CIRCLE x + 18, y + 18, r, , , col, col
+    CASE 3
+      CIRCLE x + 6, y + 6, r, , , col, col
+      CIRCLE cx, cy, r, , , col, col
+      CIRCLE x + 18, y + 18, r, , , col, col
+    CASE 4
+      CIRCLE x + 6, y + 6, r, , , col, col
+      CIRCLE x + 18, y + 6, r, , , col, col
+      CIRCLE x + 6, y + 18, r, , , col, col
+      CIRCLE x + 18, y + 18, r, , , col, col
+    CASE 5
+      CIRCLE x + 6, y + 6, r, , , col, col
+      CIRCLE x + 18, y + 6, r, , , col, col
+      CIRCLE cx, cy, r, , , col, col
+      CIRCLE x + 6, y + 18, r, , , col, col
+      CIRCLE x + 18, y + 18, r, , , col, col
+    CASE 6
+      CIRCLE x + 6, y + 6, r, , , col, col
+      CIRCLE x + 18, y + 6, r, , , col, col
+      CIRCLE x + 6, cy, r, , , col, col
+      CIRCLE x + 18, cy, r, , , col, col
+      CIRCLE x + 6, y + 18, r, , , col, col
+      CIRCLE x + 18, y + 18, r, , , col, col
+  END SELECT
+END SUB
+
+' === Initial Dice Draw ===
+DrawDice(0)  ' FALSE = brown turn
+
 ' === Draw Right Bear-off Tray ===
 trayX = X_OFFSET + 12 * POINT_W + BAR_W
 LINE trayX, 0, trayX, H, TRAY_W, trayColor
@@ -69,6 +131,7 @@ pieces(24 - 1)  = -2
 pieces(24 - 12) = -5
 pieces(24 - 17) = -3
 pieces(24 - 19) = -5
+
 
 ' === Draw Checkers ===
 FOR i = 0 TO 23

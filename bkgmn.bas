@@ -58,8 +58,8 @@ LINE xx, 0, xx, H, BAR_W, barColor
 ' === Dice Drawing Function ===
 SUB DrawDice(turnIsWhite)
   LOCAL x, y, fillCol, pipCol
-  x = INT(xx + BAR_W / 2 - 10 + 50)
-  y = INT(H / 2 - 10)
+  x = W - TRAY_W - 24 * 2 - 10 - 50
+  y = INT(H / 2 - 12)
 
   IF turnIsWhite THEN
     fillCol = RGB(240,240,220)
@@ -71,9 +71,10 @@ SUB DrawDice(turnIsWhite)
 
   RBOX x, y, 24, 24, 4, RGB(0,0,0), fillCol
   RBOX x + 34, y, 24, 24, 4, RGB(0,0,0), fillCol
-    ' === Draw Pips for Static Roll (5 and 6) ===
-  DrawDiePips x, y-1, d1, pipCol
-  DrawDiePips x + 34, y-1, d2, pipCol
+
+  ' === Draw Pips for Static Roll (5 and 6) ===
+  DrawDiePips x, y, d1, pipCol
+  DrawDiePips x + 34, y, d2, pipCol
 END SUB
 
 ' === Dice Pip Drawing Function ===
@@ -126,21 +127,7 @@ DrawDice(turnIsWhite)
 trayX = X_OFFSET + 12 * POINT_W + BAR_W
 LINE trayX, 0, trayX, H, TRAY_W, trayColor
 
-' === Draw Right Bear-off Tray ===
-trayX = X_OFFSET + 12 * POINT_W + BAR_W
-LINE trayX, 0, trayX, H, TRAY_W, trayColor
 
-
-' === Handle Dice Roll on Spacebar ===
-DO
-  k$ = INKEY$
-  IF k$ = " " THEN
-    d1 = INT(RND * 6) + 1
-    d2 = INT(RND * 6) + 1
-    turnIsWhite = 1 - turnIsWhite
-    DrawDice(turnIsWhite)
-  ENDIF
-LOOP
 
 ' === Checker Setup ===
 DIM pieces(23)
@@ -152,7 +139,6 @@ pieces(24 - 1)  = -2
 pieces(24 - 12) = -5
 pieces(24 - 17) = -3
 pieces(24 - 19) = -5
-
 
 ' === Draw Checkers ===
 FOR i = 0 TO 23
@@ -178,6 +164,26 @@ FOR i = 0 TO 23
       yy = PIECE_R + 2 + j * (PIECE_R * 2 + 2)
       CIRCLE xx, yy, PIECE_R, 1, , border, fill
     NEXT
+  ELSE
+    FOR j = 0 TO num - 1
+      yy = H - PIECE_R - 2 - j * (PIECE_R * 2 + 2)
+      CIRCLE xx, yy, PIECE_R, 1, , border, fill
+    NEXT
+  ENDIF
+
+SkipDraw:
+NEXT
+
+' === Handle Dice Roll on Spacebar ===
+DO
+  k$ = INKEY$
+  IF k$ = " " THEN
+    d1 = INT(RND * 6) + 1
+    d2 = INT(RND * 6) + 1
+    turnIsWhite = 1 - turnIsWhite
+    DrawDice(turnIsWhite)
+  ENDIF
+LOOP
   ELSE
     FOR j = 0 TO num - 1
       yy = H - PIECE_R - 2 - j * (PIECE_R * 2 + 2)

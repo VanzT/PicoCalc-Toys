@@ -72,8 +72,8 @@ SUB DrawDice(turnIsWhite)
   RBOX x, y, 24, 24, 4, RGB(0,0,0), fillCol
   RBOX x + 34, y, 24, 24, 4, RGB(0,0,0), fillCol
     ' === Draw Pips for Static Roll (5 and 6) ===
-  DrawDiePips x, y-1, 4, pipCol
-  DrawDiePips x + 34, y-1, 3, pipCol
+  DrawDiePips x, y-1, d1, pipCol
+  DrawDiePips x + 34, y-1, d2, pipCol
 END SUB
 
 ' === Dice Pip Drawing Function ===
@@ -115,11 +115,32 @@ SUB DrawDiePips(x, y, val, col)
 END SUB
 
 ' === Initial Dice Draw ===
-DrawDice(0)  ' FALSE = brown turn
+RANDOMIZE TIMER
+turnIsWhite = 0
+d1 = 5
+d2 = 6
+DrawDice(turnIsWhite)
+
 
 ' === Draw Right Bear-off Tray ===
 trayX = X_OFFSET + 12 * POINT_W + BAR_W
 LINE trayX, 0, trayX, H, TRAY_W, trayColor
+
+' === Draw Right Bear-off Tray ===
+trayX = X_OFFSET + 12 * POINT_W + BAR_W
+LINE trayX, 0, trayX, H, TRAY_W, trayColor
+
+
+' === Handle Dice Roll on Spacebar ===
+DO
+  k$ = INKEY$
+  IF k$ = " " THEN
+    d1 = INT(RND * 6) + 1
+    d2 = INT(RND * 6) + 1
+    turnIsWhite = 1 - turnIsWhite
+    DrawDice(turnIsWhite)
+  ENDIF
+LOOP
 
 ' === Checker Setup ===
 DIM pieces(23)

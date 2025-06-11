@@ -23,6 +23,7 @@ DIM i, rolls
 DIM pieces(23)
 DIM d1, d2
 turnIsWhite = 0
+canRoll = 1
 RANDOMIZE TIMER
 
 ClearScreen
@@ -35,8 +36,8 @@ DrawCenterBar
 ' === main loop ===
 DO
   k$ = INKEY$
-  IF k$ = " " THEN
-    rolls = INT(RND * 5) + 8  ' random between 5 and 12 rolls
+  IF k$ = " " AND canRoll THEN
+    rolls = INT(RND * 5) + 8  ' random between 8 and 12 rolls
     FOR i = 1 TO rolls
       d1 = INT(RND * 6) + 1
       d2 = INT(RND * 6) + 1
@@ -44,7 +45,12 @@ DO
       PAUSE 80
     NEXT
     DrawDice(turnIsWhite)
+    canRoll = 0  ' prevent rolling again until turn ends
+  ENDIF
+
+  IF (k$ = "T" OR k$ = "t") AND canRoll = 0 THEN
     turnIsWhite = 1 - turnIsWhite
+    canRoll = 1  ' enable rolling for next player
   ENDIF
 LOOP
 

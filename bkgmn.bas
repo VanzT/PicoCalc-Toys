@@ -17,6 +17,7 @@ trayColor      = RGB(120,100,80)
 edgeColor      = RGB(80,80,80)
 triColor1      = RGB(210,180,140)
 triColor2      = RGB(255,255,255)
+cursorColor    = RGB(255,0,0)
 
 ' === Helper Functions for Screen Flip ===
 FUNCTION FX(x)
@@ -32,9 +33,18 @@ DIM i, rolls
 DIM pieces(23)
 DIM d1, d2
 DIM x%(2), y%(2)
+DIM validPoints(23)
+DIM spaceOrder(23)
+DIM cursorSeq(23)
+DIM leftToRight(23)
+DIM rightToLeft(23)
+FOR i = 0 TO 11: leftToRight(i) = 11 - i: NEXT
+FOR i = 0 TO 11: leftToRight(i + 12) = i + 12: NEXT
+FOR i = 0 TO 23: rightToLeft(i) = leftToRight(23 - i): NEXT
 turnIsWhite = 1
 canRoll = 1
 screenFlipped = 0
+cursorIndex = -1
 RANDOMIZE TIMER
 
 ClearScreen
@@ -43,13 +53,21 @@ DrawBearTray
 InitPieces pieces()
 DrawCheckers pieces()
 DrawCenterBar
+BuildValidPoints pieces(), validPoints(), turnIsWhite
+FOR i = 0 TO 23
+  cursorSeq(i) = leftToRight(i)
+NEXT
+
+FOR i = 0 TO 23
+  IF validPoints(cursorSeq(i)) THEN cursorIndex = cursorSeq(i) : EXIT FOR
+NEXT
 'DrawDice(turnIsWhite)
 
 ' === main loop ===
 DO
   k$ = INKEY$
   IF k$ = " " AND canRoll THEN
-    rolls = INT(RND * 8) + 11  'random number of rolls to simulate dice throw 
+    rolls = INT(RND * 8) + 11
     FOR i = 1 TO rolls
       d1 = INT(RND * 6) + 1
       d2 = INT(RND * 6) + 1
@@ -57,21 +75,58 @@ DO
       PAUSE 80
     NEXT
     DrawDice(turnIsWhite)
-    canRoll = 0  ' prevent rolling again until turn ends
+    canRoll = 0
   ENDIF
 
   IF (k$ = "T" OR k$ = "t") AND canRoll = 0 THEN
     turnIsWhite = 1 - turnIsWhite
-    canRoll = 1  ' enable rolling for next player
+    canRoll = 1
     screenFlipped = 1 - screenFlipped
-
+    IF turnIsWhite THEN
+      FOR i = 0 TO 23
+        cursorSeq(i) = leftToRight(i)
+      NEXT
+    ELSE
+      FOR i = 0 TO 23
+        cursorSeq(i) = rightToLeft(i)
+      NEXT
+    ENDIF
     ClearScreen
     DrawBoard
     DrawBearTray
     DrawCheckers pieces()
     DrawCenterBar
     DrawDice(turnIsWhite)
+    BuildValidPoints pieces(), validPoints(), turnIsWhite
+    FOR i = 0 TO 23
+      IF validPoints(cursorSeq(i)) THEN cursorIndex = cursorSeq(i) : EXIT FOR
+    NEXT
   ENDIF
+
+  IF k$ = CHR$(130) AND cursorIndex >= 0 THEN
+    DrawCursor cursorIndex, 1 ' erase
+    FOR i = 0 TO 23
+      IF cursorSeq(i) = cursorIndex THEN EXIT FOR
+    NEXT
+    DO
+      i = (i - 1 + 24) MOD 24
+      cursorIndex = cursorSeq(i)
+    LOOP WHILE validPoints(cursorIndex) = 0
+    DrawCursor cursorIndex, 0 ' draw
+  ENDIF
+
+  IF k$ = CHR$(131) AND cursorIndex >= 0 THEN
+    DrawCursor cursorIndex, 1 ' erase
+    FOR i = 0 TO 23
+      IF cursorSeq(i) = cursorIndex THEN EXIT FOR
+    NEXT
+    DO
+      i = (i + 1) MOD 24
+      cursorIndex = cursorSeq(i)
+    LOOP WHILE validPoints(cursorIndex) = 0
+    DrawCursor cursorIndex, 0 ' draw
+  ENDIF
+
 LOOP
 
 ' === Clear Screen ===
@@ -109,6 +164,43 @@ SUB DrawBoard
     POLYGON 3, x%(), y%(), colr, colr
   NEXT
 END SUB
+
+' === DrawCursor Subroutine ===
+SUB DrawCursor(posi, erase)
+  LOCAL row, col, colVis, baseX, leftX, rightX, cy, colr
+
+  row = posi \ 12
+  col = posi MOD 12
+
+  IF row = 0 THEN
+    colVis = 11 - col
+  ELSE
+    colVis = col
+  ENDIF
+
+  baseX = X_OFFSET + colVis * POINT_W + (colVis \ 6) * BAR_W
+  leftX = FX(baseX + POINT_W / 2 - 6)
+  rightX = FX(baseX + POINT_W / 2 + 6)
+
+  IF erase THEN
+    colr = bgColor
+  ELSE
+    colr = cursorColor
+  ENDIF
+
+  IF row = 0 THEN
+    cy = TRI_HEIGHT + 11
+  ELSE
+    cy = H - TRI_HEIGHT - 11
+  ENDIF
+
+  cy = FY(cy)
+
+  LINE leftX, cy, rightX, cy, 2, colr
+END SUB
+
+
+
 
 ' === Dice Drawing Function ===
 SUB DrawDice(turnIsWhite)
@@ -203,6 +295,15 @@ SUB InitPieces(p())
   p(12) = -5
   p(7)  = -3
   p(5)  = -5
+END SUB
+
+
+' === Determine Valid Points ===
+SUB BuildValidPoints(p(), v(), isWhite)
+  LOCAL i
+  FOR i = 0 TO 23
+    IF isWhite AND p(i) > 0 THEN v(i) = 1 ELSE IF NOT isWhite AND p(i) < 0 THEN v(i) = 1 ELSE v(i) = 0
+  NEXT
 END SUB
 
 ' === Draw Checkers ===

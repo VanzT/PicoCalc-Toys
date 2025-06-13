@@ -18,6 +18,7 @@ edgeColor      = RGB(80,80,80)
 triColor1      = RGB(210,180,140)
 triColor2      = RGB(255,255,255)
 cursorColor    = RGB(255,0,0)
+selectedCursorColor = RGB(0,255,0)
 
 ' === Helper Functions for Screen Flip ===
 FUNCTION FX(x)
@@ -192,6 +193,7 @@ DO
         DrawCheckers pieces()
         DrawDice turnIsWhite
         hasPicked = 1
+        DrawCursor cursorIndex, 0
         ' Restrict valid moves to remaining pips and direction
         FOR i = 0 TO 23
           dist = ABS(i - pickedPoint)
@@ -232,6 +234,7 @@ DO
         DrawCheckers pieces()
         DrawDice turnIsWhite
         hasPicked = 0
+        DrawCursor cursorIndex, 0
         pickedPoint = -1
         BuildValidPoints pieces(), validPoints(), turnIsWhite
         IF m1 = 0 AND m2 = 0 THEN
@@ -293,6 +296,8 @@ SUB DrawCursor(posi, erase)
   rightX = FX(baseX + POINT_W / 2 + 6)
   IF erase THEN
     colr = bgColor
+  ELSEIF hasPicked = 1 THEN
+    colr = selectedCursorColor
   ELSE
     colr = cursorColor
   ENDIF

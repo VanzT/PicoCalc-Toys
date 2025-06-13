@@ -41,6 +41,8 @@ END FUNCTION
 DIM i, rolls, bd, wd
 DIM pieces(23)
 DIM d1, d2, m1, m2
+DIM backupPieces(23)
+DIM backupM1, backupM2
 DIM x%(2), y%(2)
 DIM validPoints(23)
 DIM cursorSeq(23)
@@ -109,6 +111,9 @@ FOR i = 0 TO 23
     EXIT FOR
   ENDIF
 NEXT
+' Snapshot start-of-turn state
+FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
+backupM1 = m1: backupM2 = m2
 
 ' === Main Loop ===
 DO
@@ -126,6 +131,19 @@ DO
     m1 = d1
     m2 = d2
     canRoll = 0
+  ENDIF
+
+  ' Do-over handler
+  IF (k$ = "C" OR k$ = "c") AND canRoll = 0 THEN
+    FOR i = 0 TO 23
+      pieces(i) = backupPieces(i)
+    NEXT
+    m1 = backupM1
+    m2 = backupM2
+    hasPicked = 0
+    ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+    BuildValidPoints pieces(), validPoints(), turnIsWhite
+    DrawCursor cursorIndex, 0
   ENDIF
 
   ' End turn and flip board

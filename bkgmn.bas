@@ -47,12 +47,37 @@ screenFlipped = 0
 cursorIndex = -1
 RANDOMIZE TIMER
 
+' === Opening Roll to Determine First Player ===
+do
+  bd = INT(RND * 6) + 1
+  wd = INT(RND * 6) + 1
+loop while bd = wd
+
+if bd > wd then
+  turnIsWhite = 0          ' Brown starts
+  screenFlipped = 1       ' Flip board for Brown
+  d1 = bd: d2 = wd        ' Opening roll dice values
+else
+  turnIsWhite = 1          ' White starts
+  screenFlipped = 0       ' Standard orientation
+  d1 = wd: d2 = bd
+endif
+
+' Display opening roll
+DrawDice turnIsWhite
+pause 1000
+
+canRoll = 0
+
+
+
 ClearScreen
 DrawBoard
 DrawBearTray
 InitPieces pieces()
 DrawCheckers pieces()
 DrawCenterBar
+DrawDice turnIsWhite
 BuildValidPoints pieces(), validPoints(), turnIsWhite
 FOR i = 0 TO 23
   cursorSeq(i) = leftToRight(i)

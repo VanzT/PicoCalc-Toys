@@ -122,7 +122,7 @@ DO
   ENDIF
 
   ' End turn and flip board
-  IF (k$ = "T" OR k$ = "t") AND canRoll = 0 THEN
+  IF (k$ = "T" OR k$ = "t") AND canRoll = 0 AND m1 = 0 AND m2 = 0 AND hasPicked = 0 THEN
     turnIsWhite = 1 - turnIsWhite
     canRoll = 1
     screenFlipped = 1 - screenFlipped
@@ -147,7 +147,7 @@ DO
   ENDIF
 
   ' Move cursor left
-  IF k$ = CHR$(130) AND cursorIndex >= 0 THEN
+  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(130) AND cursorIndex >= 0 THEN
     DrawCursor cursorIndex, 1
     FOR i = 0 TO 23
       IF cursorSeq(i) = cursorIndex THEN EXIT FOR
@@ -160,7 +160,7 @@ DO
   ENDIF
 
   ' Move cursor right
-  IF k$ = CHR$(131) AND cursorIndex >= 0 THEN
+  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(131) AND cursorIndex >= 0 THEN
     DrawCursor cursorIndex, 1
     FOR i = 0 TO 23
       IF cursorSeq(i) = cursorIndex THEN EXIT FOR
@@ -228,6 +228,9 @@ DO
         hasPicked = 0
         pickedPoint = -1
         BuildValidPoints pieces(), validPoints(), turnIsWhite
+        IF m1 = 0 AND m2 = 0 THEN
+          DrawCursor cursorIndex, 1
+        ENDIF
       ENDIF
     ENDIF
   ENDIF

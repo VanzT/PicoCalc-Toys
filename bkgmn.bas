@@ -81,7 +81,7 @@ ENDIF
 m1 = d1
 m2 = d2
 DrawDice turnIsWhite
-PAUSE 500
+PAUSE 1000
 canRoll = 0
 
 ' === Initial Draw ===
@@ -93,9 +93,15 @@ DrawCheckers pieces()
 DrawCenterBar
 DrawDice turnIsWhite
 BuildValidPoints pieces(), validPoints(), turnIsWhite
-FOR i = 0 TO 23
-  cursorSeq(i) = leftToRight(i)
-NEXT
+IF turnIsWhite THEN
+  FOR i = 0 TO 23
+    cursorSeq(i) = leftToRight(i)
+  NEXT
+ELSE
+  FOR i = 0 TO 23
+    cursorSeq(i) = rightToLeft(i)
+  NEXT
+ENDIF
 FOR i = 0 TO 23
   IF validPoints(cursorSeq(i)) THEN
     cursorIndex = cursorSeq(i)
@@ -296,7 +302,7 @@ SUB DrawCursor(posi, erase)
     cy = H - TRI_HEIGHT - 11
   ENDIF
   cy = FY(cy)
-  LINE leftX, cy, rightX, cy, 2, colr
+  LINE leftX, cy, rightX, cy, 4, colr
 END SUB
 
 ' === Draw Dice Subroutine ===

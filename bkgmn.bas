@@ -40,6 +40,9 @@ END FUNCTION
 ' === Set up game ===
 DIM i, rolls, bd, wd
 DIM pieces(23)
+DIM whiteBar, blackBar
+whiteBar = 0
+blackBar = 0
 DIM d1, d2, m1, m2
 DIM backupPieces(23)
 DIM backupM1, backupM2
@@ -114,6 +117,8 @@ NEXT
 ' Snapshot start-of-turn state
 FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
 backupM1 = m1: backupM2 = m2
+' Backup bar counts
+backupWhiteBar = whiteBar: backupBlackBar = blackBar
 
 ' === Main Loop ===
 DO
@@ -143,6 +148,9 @@ DO
     NEXT
     m1 = backupM1
     m2 = backupM2
+    ' Restore captured bars
+    whiteBar = backupWhiteBar
+    blackBar = backupBlackBar
     hasPicked = 0
     ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
     BuildValidPoints pieces(), validPoints(), turnIsWhite
@@ -255,22 +263,35 @@ DO
         ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
         BuildValidPoints pieces(), validPoints(), turnIsWhite
       ELSEIF dist = m1 OR dist = m2 THEN
+        ' Capture blot if present
+        IF turnIsWhite AND pieces(dest) = -1 THEN
+          blackBar = blackBar + 1
+          pieces(dest) = 0
+        ELSEIF NOT turnIsWhite AND pieces(dest) = 1 THEN
+          whiteBar = whiteBar + 1
+          pieces(dest) = 0
+        ENDIF
+        ' Place moving piece
         IF turnIsWhite THEN
           pieces(dest) = pieces(dest) + 1
         ELSE
           pieces(dest) = pieces(dest) - 1
         ENDIF
+        ' Consume die used for this move
         IF dist = m1 THEN
           m1 = 0
         ELSE
           m2 = 0
         ENDIF
+        ' Update display immediately
         DrawBoard
         DrawCheckers pieces()
+        DrawCenterBar
         DrawDice turnIsWhite
         hasPicked = 0
         DrawCursor cursorIndex, 0
         pickedPoint = -1
+        FOR i = 0 TO 23: validPoints(i)=0: NEXT
         BuildValidPoints pieces(), validPoints(), turnIsWhite
         IF m1 = 0 AND m2 = 0 THEN
           DrawCursor cursorIndex, 1
@@ -416,13 +437,35 @@ END SUB
 
 ' === Draw Center Bar Subroutine ===
 SUB DrawCenterBar
-  LOCAL xx
+  LOCAL rawX, xLine, circleX, j, cy, border, fill, centerY, offsetY
+  ' Compute raw X position of center bar region start
+  rawX = X_OFFSET + 6 * POINT_W
+  ' Determine drawn X for bar line: left edge of bar
   IF screenFlipped THEN
-    xx = 18 + X_OFFSET + 6 * POINT_W
+    xLine = W - (rawX + BAR_W)
   ELSE
-    xx = X_OFFSET + 6 * POINT_W
+    xLine = rawX
   ENDIF
-  LINE xx, 0, xx, H, BAR_W, barColor
+  LINE xLine, 0, xLine, H, BAR_W, barColor
+  ' Compute circle X (center of bar)
+  circleX = xLine + BAR_W / 2
+  centerY = H / 2
+  ' Draw white captured pieces above center
+  border = RGB(0,0,0): fill = RGB(240,240,220)
+  FOR j = 1 TO whiteBar
+    offsetY = j * (PIECE_R * 2 + 2)
+    cy = centerY - offsetY + PIECE_R
+    cy = FY(cy)
+    CIRCLE circleX, cy, PIECE_R, 1, , border, fill
+  NEXT
+  ' Draw black captured pieces below center
+  border = RGB(0,60,20): fill = RGB(100,60,20)
+  FOR j = 1 TO blackBar
+    offsetY = j * (PIECE_R * 2 + 2)
+    cy = centerY + offsetY - PIECE_R
+    cy = FY(cy)
+    CIRCLE circleX, cy, PIECE_R, 1, , border, fill
+  NEXT
 END SUB
 
 ' === Initialize Pieces Subroutine ===

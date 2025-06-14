@@ -131,6 +131,9 @@ DO
     m1 = d1
     m2 = d2
     canRoll = 0
+    ' Snapshot start-of-turn state
+    FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
+    backupM1 = m1: backupM2 = m2
   ENDIF
 
   ' Do-over handler

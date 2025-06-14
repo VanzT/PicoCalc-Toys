@@ -236,11 +236,25 @@ DO
             validPoints(i) = 0
           ENDIF
         NEXT
+        ' If no valid moves, allow dropping back on original point only
+        countValid = 0
+        FOR j = 0 TO 23: IF validPoints(j) = 1 THEN countValid = countValid + 1: NEXT
+        IF countValid = 0 THEN validPoints(pickedPoint) = 1
       ENDIF
     ELSE
       dest = cursorIndex
       dist = ABS(dest - pickedPoint)
-      IF dist = m1 OR dist = m2 THEN
+      IF dest = pickedPoint THEN
+        ' Drop back without penalty
+        IF turnIsWhite THEN
+          pieces(pickedPoint) = pieces(pickedPoint) + 1
+        ELSE
+          pieces(pickedPoint) = pieces(pickedPoint) - 1
+        ENDIF
+        hasPicked = 0
+        ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+        BuildValidPoints pieces(), validPoints(), turnIsWhite
+      ELSEIF dist = m1 OR dist = m2 THEN
         IF turnIsWhite THEN
           pieces(dest) = pieces(dest) + 1
         ELSE

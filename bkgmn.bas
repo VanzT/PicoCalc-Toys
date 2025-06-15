@@ -139,6 +139,8 @@ DO
     ' Snapshot start-of-turn state
     FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
     backupM1 = m1: backupM2 = m2
+    ' Backup bar counts
+    backupWhiteBar = whiteBar: backupBlackBar = blackBar
   ENDIF
 
   ' Do-over handler

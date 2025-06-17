@@ -52,6 +52,7 @@ DIM validPoints(23)
 DIM cursorSeq(23)
 DIM leftToRight(23)
 DIM rightToLeft(23)
+DIM entryPts(2), entryDice(2)
 FOR i = 0 TO 11
   leftToRight(i) = 11 - i
 NEXT
@@ -137,36 +138,141 @@ DO
     m1 = d1
     m2 = d2
     canRoll = 0
+
     ' Snapshot start-of-turn state
     FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
-    backupM1 = m1: backupM2 = m2
-    ' Backup bar counts
-    backupWhiteBar = whiteBar: backupBlackBar = blackBar
+    backupM1 = m1
+    backupM2 = m2
+    backupWhiteBar = whiteBar
+    backupBlackBar = blackBar
+
+    ' Check for bar-reentry
     barActive = (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)
     IF barActive THEN
-    ' Pick up from bar immediately
-      hasPicked   = 1
-      pickedPoint = BAR_INDEX
-      BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
-      ' Move cursor to the first valid re-entry point
       IF turnIsWhite THEN
+        reEntryCount = whiteBar
+      ELSE
+        reEntryCount = blackBar
+      ENDIF
+
+      FOR re = 1 TO reEntryCount
+        ' Build valid re-entry points
+        BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
+
+        ' Collect entry options
+        entryCnt = 0
         FOR i = 0 TO 23
           IF validPoints(i) = 1 THEN
-            cursorIndex = i
-            EXIT FOR
+            entryCnt = entryCnt + 1
+            entryPts(entryCnt) = i
+            dist = ABS(i - BAR_INDEX)
+            IF dist = m1 THEN
+              entryDice(entryCnt) = 1
+            ELSE
+              entryDice(entryCnt) = 2
+            ENDIF
           ENDIF
         NEXT
+
+        ' If no entries, bail out and force end-turn
+        IF entryCnt = 0 THEN
+          hasPicked = 0
+          EXIT FOR
+        ENDIF
+        ' Cursor picker for =2 options
+        sel = 1
+        cursorIndex = entryPts(sel)
+        DrawCursor cursorIndex, 0
+        IF entryCnt > 1 THEN
+          DO
+            k$ = INKEY$
+            IF k$ = CHR$(130) THEN
+              DrawCursor cursorIndex, 1
+              sel = sel - 1: IF sel < 1 THEN sel = entryCnt
+              cursorIndex = entryPts(sel)
+              DrawCursor cursorIndex, 0
+            ENDIF
+            IF k$ = CHR$(131) THEN
+              DrawCursor cursorIndex, 1
+              sel = sel + 1: IF sel > entryCnt THEN sel = 1
+              cursorIndex = entryPts(sel)
+              DrawCursor cursorIndex, 0
+            ENDIF
+          LOOP WHILE k$ <> CHR$(13)
+        ELSE
+          DO: k$ = INKEY$: LOOP WHILE k$ <> CHR$(13)
+        ENDIF
+        ' Capture opponent blot if present
+        IF turnIsWhite AND pieces(cursorIndex) < 0 THEN
+          blackBar = blackBar + 1
+          pieces(cursorIndex) = 0
+        ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 0 THEN
+          whiteBar = whiteBar + 1
+          pieces(cursorIndex) = 0
+        ENDIF
+        ' Remove from bar and place your checker
+        IF turnIsWhite THEN
+          whiteBar = whiteBar - 1
+          pieces(cursorIndex) = pieces(cursorIndex) + 1
+        ELSE
+          blackBar = blackBar - 1
+          pieces(cursorIndex) = pieces(cursorIndex) - 1
+        ENDIF
+        ' Consume the chosen die
+        IF entryDice(sel) = 1 THEN
+          m1 = 0
+        ELSE
+          m2 = 0
+        ENDIF
+        ' Redraw before next attempt
+        ClearScreen
+        DrawBoard
+        DrawBearTray
+        DrawCheckers pieces()
+        DrawCenterBar
+        DrawDice turnIsWhite
+      NEXT  ' re-entry loop
+      ' Finalize after re-entry attempts
+      barActive = (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)
+      IF barActive THEN
+        ' Still have bar pieces: only allow end-turn
+        hasPicked = 0
+        reEntryBlocked = 1
       ELSE
-        FOR i = 23 TO 0 STEP -1
-          IF validPoints(i) = 1 THEN
-            cursorIndex = i
-            EXIT FOR
+        ' All pieces re-entered
+        hasPicked = 0
+        IF m1 = 0 AND m2 = 0 THEN
+          ' -- No dice left: stay locked; only “T” will work --
+          reEntryBlocked = 1
+        ELSE
+          ' -- Dice remain: resume normal play --
+          reEntryBlocked = 0
+          pickedPoint    = -1
+          ' Rebuild cursor order
+          IF turnIsWhite THEN
+            FOR i = 0 TO 23: cursorSeq(i) = leftToRight(i): NEXT
+          ELSE
+            FOR i = 0 TO 23: cursorSeq(i) = rightToLeft(i): NEXT
           ENDIF
-        NEXT
+          ' Determine all new valid move targets
+          BuildValidPoints pieces(), validPoints(), turnIsWhite
+          ' Position cursor on first valid point
+          FOR i = 0 TO 23
+            IF validPoints(cursorSeq(i)) THEN
+              cursorIndex = cursorSeq(i)
+              EXIT FOR
+            ENDIF
+          NEXT
+          ' Draw the cursor in RED for normal pick-up
+          DrawCursor cursorIndex, 0
+        ENDIF
       ENDIF
-      DrawCursor cursorIndex, 0
     ENDIF
-  ENDIF
+    DO  
+      k$ = INKEY$  
+    LOOP WHILE k$ <> ""  
+  ENDIF  ' roll dice mid-turn
+
 
   ' Do-over handler
   IF (k$ = "C" OR k$ = "c") AND canRoll = 0 AND reEntryBlocked <> 1 THEN
@@ -189,11 +295,14 @@ DO
     turnIsWhite = 1 - turnIsWhite
     canRoll = 1
     screenFlipped = 1 - screenFlipped
+    reEntryBlocked = 0               ' ? unblock normal cursor logic
+
     IF turnIsWhite THEN
       FOR i = 0 TO 23: cursorSeq(i) = leftToRight(i): NEXT
     ELSE
       FOR i = 0 TO 23: cursorSeq(i) = rightToLeft(i): NEXT
     ENDIF
+
     ClearScreen
     DrawBoard
     DrawBearTray
@@ -201,13 +310,17 @@ DO
     DrawCenterBar
     DrawDice turnIsWhite
     BuildValidPoints pieces(), validPoints(), turnIsWhite
+
     FOR i = 0 TO 23
       IF validPoints(cursorSeq(i)) THEN
         cursorIndex = cursorSeq(i)
         EXIT FOR
       ENDIF
     NEXT
+
+    ' DrawCursor cursorIndex, 0     ' ? make the cursor appear in red
   ENDIF
+
 
   ' Move cursor left
   IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(130) AND cursorIndex >= 0 AND reEntryBlocked <> 1 THEN

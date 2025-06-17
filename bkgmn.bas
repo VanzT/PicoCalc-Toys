@@ -3,6 +3,7 @@
 ' === Constants ===
 CONST W = 320
 CONST H = 320
+CONST BAR_INDEX = 24
 CONST POINT_W = 23.666
 CONST BAR_W = 18
 CONST TRAY_W = 18
@@ -141,10 +142,34 @@ DO
     backupM1 = m1: backupM2 = m2
     ' Backup bar counts
     backupWhiteBar = whiteBar: backupBlackBar = blackBar
+    barActive = (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)
+    IF barActive THEN
+    ' Pick up from bar immediately
+      hasPicked   = 1
+      pickedPoint = BAR_INDEX
+      BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
+      ' Move cursor to the first valid re-entry point
+      IF turnIsWhite THEN
+        FOR i = 0 TO 23
+          IF validPoints(i) = 1 THEN
+            cursorIndex = i
+            EXIT FOR
+          ENDIF
+        NEXT
+      ELSE
+        FOR i = 23 TO 0 STEP -1
+          IF validPoints(i) = 1 THEN
+            cursorIndex = i
+            EXIT FOR
+          ENDIF
+        NEXT
+      ENDIF
+      DrawCursor cursorIndex, 0
+    ENDIF
   ENDIF
 
   ' Do-over handler
-  IF (k$ = "C" OR k$ = "c") AND canRoll = 0 THEN
+  IF (k$ = "C" OR k$ = "c") AND canRoll = 0 AND reEntryBlocked <> 1 THEN
     FOR i = 0 TO 23
       pieces(i) = backupPieces(i)
     NEXT
@@ -185,7 +210,7 @@ DO
   ENDIF
 
   ' Move cursor left
-  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(130) AND cursorIndex >= 0 THEN
+  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(130) AND cursorIndex >= 0 AND reEntryBlocked <> 1 THEN
     DrawCursor cursorIndex, 1
     FOR i = 0 TO 23
       IF cursorSeq(i) = cursorIndex THEN EXIT FOR
@@ -198,7 +223,7 @@ DO
   ENDIF
 
   ' Move cursor right
-  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(131) AND cursorIndex >= 0 THEN
+  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(131) AND cursorIndex >= 0 AND reEntryBlocked <> 1 THEN
     DrawCursor cursorIndex, 1
     FOR i = 0 TO 23
       IF cursorSeq(i) = cursorIndex THEN EXIT FOR
@@ -253,9 +278,18 @@ DO
       ENDIF
     ELSE
       dest = cursorIndex
-      dist = ABS(dest - pickedPoint)
+      if turnIsWhite and whiteBar > 0 Then
+        dist = BAR_INDEX - (ABS(dest - pickedPoint)) + 1
+        whiteBar = whiteBar - 1
+      elseif NOT turnIsWhite and blackBar > 0 then
+        dist = ABS(dest - pickedPoint)
+        blackBar = BlackBar - 1
+      Else
+        dist = ABS(dest - pickedPoint)
+      Endif
+      'print "cs= ", cursorIndex, "de= ", dest, "di= ", dist, "pi= ", pickedPoint 3
       IF dest = pickedPoint THEN
-        ' Drop back without penalty
+        ' Drop back without penalty2
         IF turnIsWhite THEN
           pieces(pickedPoint) = pieces(pickedPoint) + 1
         ELSE
@@ -495,6 +529,48 @@ SUB BuildValidPoints(p(), v(), isWhite)
     ENDIF
   NEXT
 END SUB
+
+
+' === BuildReEntryPoints ===
+
+SUB BuildReEntryPoints(p(), v(), isWhite, die1, die2)
+  LOCAL i, pt, countValid
+
+  FOR i = 0 TO 23
+    v(i) = 0
+  NEXT
+
+  IF isWhite THEN
+    IF die1 > 0 THEN
+      pt = die1 - 1
+      IF p(pt) >= -1 THEN v(pt) = 1
+    ENDIF
+    IF die2 > 0 AND die2 <> die1 THEN
+      pt = die2 - 1
+      IF p(pt) >= -1 THEN v(pt) = 1
+    ENDIF
+  ELSE
+    IF die1 > 0 THEN
+      pt = 24 - die1
+      IF p(pt) <= 1 THEN v(pt) = 1
+    ENDIF
+    IF die2 > 0 AND die2 <> die1 THEN
+      pt = 24 - die2
+      IF p(pt) <= 1 THEN v(pt) = 1
+    ENDIF
+  ENDIF
+
+  hasPicked = 1
+  countValid = 0
+  pickedPoint = 24
+  FOR i = 0 TO 23
+    IF v(i) = 1 THEN countValid = countValid + 1
+  NEXT
+  reEntryBlocked = (countValid = 0)
+END SUB
+
+
+
 
 ' === Draw Checkers Subroutine ===
 SUB DrawCheckers(p())

@@ -35,6 +35,11 @@ turnIsWhite = 1
 canRoll = 1
 RANDOMIZE TIMER
 
+' testing variables
+whiteBar = 1
+' clear when done 
+
+
 ' === Initial Draw ===
 ClearScreen
 DrawBoard
@@ -77,6 +82,12 @@ DO
 
     CASE "C", "c"
       IF state <> 0 THEN DoOver
+    
+    CASE "B", "b"
+    ' Only valid if youve rolled and have pieces on the bar
+    IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
+      barOff
+    ENDIF
 
     CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129)
       IF canRoll = 0 THEN NavigateCursor  ' left/up/right/down
@@ -103,15 +114,15 @@ end SUB
 
 ' === Navigate Cursor Subroutine ===
 SUB NavigateCursor
-  LOCAL newIdx, row, col, colVis
-  LOCAL keyChar$  ' string to hold key press
+  LOCAL newIdx, row, col, colVis, keyChar$
 
   ' Erase old cursor
   DrawCursor cursorIndex, 1
+
   ' Determine row (visual) and raw column
   row = cursorIndex \ 12    ' 0 = top row, 1 = bottom row
   col = cursorIndex MOD 12
-  ' Convert to visual column for top row inversion
+  ' Convert to visual column on top row inversion
   IF row = 0 THEN
     colVis = 11 - col
   ELSE
@@ -121,33 +132,47 @@ SUB NavigateCursor
   ' Read key and invert if it's brown's turn
   keyChar$ = k$
   IF NOT turnIsWhite THEN
-    IF keyChar$ = CHR$(130) THEN
-      keyChar$ = CHR$(131)
-    ELSEIF keyChar$ = CHR$(131) THEN
-      keyChar$ = CHR$(130)
-    ELSEIF keyChar$ = CHR$(128) THEN
-      keyChar$ = CHR$(129)
-    ELSEIF keyChar$ = CHR$(129) THEN
-      keyChar$ = CHR$(128)
-    ENDIF
+    SELECT CASE keyChar$
+      CASE CHR$(130)
+        keyChar$ = CHR$(131)
+      CASE CHR$(131)
+        keyChar$ = CHR$(130)
+      CASE CHR$(128)
+        keyChar$ = CHR$(129)
+      CASE CHR$(129)
+        keyChar$ = CHR$(128)
+    END SELECT
   ENDIF
 
-  ' Handle directional input on normalized keyChar$
+  ' Handle directional input on unified keyChar$
   IF keyChar$ = CHR$(130) THEN       ' Left
     colVis = (colVis - 1 + 12) MOD 12
+    IF row = 0 THEN
+      newIdx = 11 - colVis
+    ELSE
+      newIdx = 12 + colVis
+    ENDIF
   ELSEIF keyChar$ = CHR$(131) THEN   ' Right
     colVis = (colVis + 1) MOD 12
+    IF row = 0 THEN
+      newIdx = 11 - colVis
+    ELSE
+      newIdx = 12 + colVis
+    ENDIF
   ELSEIF keyChar$ = CHR$(129) THEN   ' Down
-    IF row = 0 THEN row = 1
+    IF row = 0 THEN
+      newIdx = 12 + colVis
+    ELSE
+      newIdx = cursorIndex
+    ENDIF
   ELSEIF keyChar$ = CHR$(128) THEN   ' Up
-    IF row = 1 THEN row = 0
-  ENDIF
-
-  ' Compute new index from visual coords
-  IF row = 0 THEN
-    newIdx = 11 - colVis
+    IF row = 1 THEN
+      newIdx = 11 - colVis
+    ELSE
+      newIdx = cursorIndex
+    ENDIF
   ELSE
-    newIdx = 12 + colVis
+    newIdx = cursorIndex
   ENDIF
 
   cursorIndex = newIdx
@@ -157,14 +182,20 @@ END SUB
 
 
 
-
-
 ' === Pick or Drop Subroutine ===
 SUB PickDrop
   LOCAL iFlash
-  ' If nothing picked yet, attempt pick up
+  ' Enforce bar re-entry: if any of player's checkers on bar, block normal pick-up
   IF hasPicked = 0 THEN
-    ' Check for correct-color piece
+    IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
+      ' Flash cursor three times to indicate must re-enter
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1 : PAUSE 100
+        DrawCursor cursorIndex, 0 : PAUSE 100
+      NEXT
+      EXIT SUB
+    ENDIF
+    ' Proceed with normal pick-up logic
     IF (turnIsWhite AND pieces(cursorIndex) > 0) OR (NOT turnIsWhite AND pieces(cursorIndex) < 0) THEN
       pickedPoint = cursorIndex
       ' Remove one checker from board
@@ -194,6 +225,7 @@ SUB PickDrop
     ' Drop-off logic to be implemented
   ENDIF
 END SUB
+
 
 SUB DoOver
   FOR i = 0 TO 23: pieces(i) = backupPieces(i): NEXT
@@ -462,6 +494,97 @@ SUB EndTurn
     ENDIF
   NEXT
 END SUB
+
+SUB barOff
+  LOCAL iFlash, dist, idx
+  ' Build the legal re-entry spots based on your dice
+  BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
+
+  ' If the cursor is on a valid re-entry point, do it
+  IF validPoints(cursorIndex) THEN
+    DrawCursor cursorIndex, 1
+    ' Capture opponent blot if there
+    IF turnIsWhite AND pieces(cursorIndex) < 0 THEN
+      blackBar = blackBar + 1: pieces(cursorIndex) = 0
+    ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 0 THEN
+      whiteBar = whiteBar + 1: pieces(cursorIndex) = 0
+    ENDIF
+
+    ' Take one from your bar and place it
+    IF turnIsWhite THEN
+      whiteBar = whiteBar - 1
+      pieces(cursorIndex) = pieces(cursorIndex) + 1
+    ELSE
+      blackBar = blackBar - 1
+      pieces(cursorIndex) = pieces(cursorIndex) - 1
+    ENDIF
+
+    ' Consume the matching die
+    dist = ABS(cursorIndex - BAR_INDEX)
+    IF dist = m1 THEN 
+      m1 = 0 
+    ELSE 
+      m2 = 0 
+    ENDIF
+
+    ' Redraw the board
+    ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+
+    ' If you still have bar pieces and dice left, stay in bar-off state
+    IF ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) AND (m1 > 0 OR m2 > 0) THEN
+      EXIT SUB
+    ENDIF
+
+    ' Otherwise switch back to normal moves
+    state = 2
+    BuildValidPoints pieces(), validPoints(), turnIsWhite
+    FOR idx = 0 TO 23
+      IF validPoints(idx) THEN 
+        cursorIndex = idx 
+        EXIT FOR
+      ENDIF
+    NEXT
+    DrawCursor cursorIndex, 0
+
+  ELSE
+    ' Invalid spot: blink cursor
+    FOR iFlash = 1 TO 3
+      DrawCursor cursorIndex, 1: PAUSE 100
+      DrawCursor cursorIndex, 0: PAUSE 100
+    NEXT
+  ENDIF
+END SUB
+
+' === Build Re-Entry Points ===
+SUB BuildReEntryPoints(p(), v(), isWhite, die1, die2)
+  LOCAL i, pt
+  ' Clear previous re-entry flags
+  FOR i = 0 TO 23
+    v(i) = 0
+  NEXT
+  ' White re-entry uses points 0..5 (space 24..19)
+  IF isWhite THEN
+    IF die1 > 0 THEN
+      pt = die1 - 1
+      IF p(pt) >= -1 THEN v(pt) = 1
+    ENDIF
+    IF die2 > 0 AND die2 <> die1 THEN
+      pt = die2 - 1
+      IF p(pt) >= -1 THEN v(pt) = 1
+    ENDIF
+  ELSE
+    ' Black re-entry uses points 23..18 (space 1..6)
+    IF die1 > 0 THEN
+      pt = 24 - die1
+      IF p(pt) <= 1 THEN v(pt) = 1
+    ENDIF
+    IF die2 > 0 AND die2 <> die1 THEN
+      pt = 24 - die2
+      IF p(pt) <= 1 THEN v(pt) = 1
+    ENDIF
+  ENDIF
+END SUB
+
 
 ' === Helper Functions ===
 FUNCTION FX(x)

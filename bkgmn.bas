@@ -425,7 +425,6 @@ SUB EndTurn
       EXIT FOR
     ENDIF
   NEXT
-  DrawCursor cursorIndex, 0
 END SUB
 
 ' === Helper Functions ===

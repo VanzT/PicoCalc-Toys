@@ -36,7 +36,7 @@ canRoll = 1
 RANDOMIZE TIMER
 
 ' testing variables
-whiteBar = 1
+whiteBar = 2
 ' clear when done 
 
 
@@ -84,16 +84,21 @@ DO
       IF state <> 0 THEN DoOver
     
     CASE "B", "b"
+      Print "state= ", state
     ' Only valid if youve rolled and have pieces on the bar
     IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
       barOff
     ENDIF
 
     CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129)
-      IF canRoll = 0 THEN NavigateCursor  ' left/up/right/down
+      IF canRoll = 0 AND (m1 <> 0 OR m2 <> 0) THEN NavigateCursor  ' left/up/right/down
 
     CASE CHR$(13)
-      if canRoll = 0 THEN PickDrop
+      IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
+        barOff
+      Elseif canRoll = 0 THEN 
+        PickDrop
+      endif
 
   END SELECT
 
@@ -177,6 +182,9 @@ SUB NavigateCursor
 
   cursorIndex = newIdx
   ' Draw new cursor
+  if (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
+    hasPicked = 1
+  endif
   DrawCursor cursorIndex, 0
 END SUB
 
@@ -184,47 +192,96 @@ END SUB
 
 ' === Pick or Drop Subroutine ===
 SUB PickDrop
-  LOCAL iFlash
-  ' Enforce bar re-entry: if any of player's checkers on bar, block normal pick-up
+  LOCAL iFlash, dist, usedDie, i
+  ' Attempt pick-up if nothing is picked
   IF hasPicked = 0 THEN
+    ' Enforce bar re-entry
     IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
-      ' Flash cursor three times to indicate must re-enter
       FOR iFlash = 1 TO 3
-        DrawCursor cursorIndex, 1 : PAUSE 100
-        DrawCursor cursorIndex, 0 : PAUSE 100
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
       NEXT
       EXIT SUB
     ENDIF
-    ' Proceed with normal pick-up logic
+    ' Valid pick-up?
     IF (turnIsWhite AND pieces(cursorIndex) > 0) OR (NOT turnIsWhite AND pieces(cursorIndex) < 0) THEN
-      pickedPoint = cursorIndex
-      ' Remove one checker from board
+      origPick = cursorIndex
       IF turnIsWhite THEN
-        pieces(pickedPoint) = pieces(pickedPoint) - 1
+        pieces(origPick) = pieces(origPick) - 1
       ELSE
-        pieces(pickedPoint) = pieces(pickedPoint) + 1
+        pieces(origPick) = pieces(origPick) + 1
       ENDIF
       hasPicked = 1
-      ' Redraw to remove the picked checker
-      ClearScreen
-      DrawBoard
-      DrawBearTray
-      DrawCheckers pieces()
-      DrawCenterBar
-      DrawDice turnIsWhite
-      ' Show picked cursor in selected color
+      ' Redraw after removal
+      ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
       DrawCursor cursorIndex, 0
     ELSE
-      ' Invalid pick: flash cursor three times
       FOR iFlash = 1 TO 3
-        DrawCursor cursorIndex, 1 : PAUSE 100
-        DrawCursor cursorIndex, 0 : PAUSE 100
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
       NEXT
     ENDIF
   ELSE
-    ' Drop-off logic to be implemented
+    ' Drop-off phase
+    ' If returning to origin, cancel pick
+    IF cursorIndex = origPick THEN
+      IF turnIsWhite THEN
+        pieces(origPick) = pieces(origPick) + 1
+      ELSE
+        pieces(origPick) = pieces(origPick) - 1
+      ENDIF
+      hasPicked = 0
+      ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+      DrawCursor cursorIndex, 0
+      EXIT SUB
+    ENDIF
+    ' Compute move distance
+    dist = ABS(cursorIndex - origPick)
+    ' Determine which die to use
+    IF m1 > 0 AND dist = m1 THEN
+      usedDie = 1
+    ELSEIF m2 > 0 AND dist = m2 THEN
+      usedDie = 2
+    ELSE
+      ' Invalid drop: flash cursor
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
+      EXIT SUB
+    ENDIF
+    ' Capture blot if present
+    IF turnIsWhite AND pieces(cursorIndex) < 0 THEN
+      blackBar = blackBar + 1: pieces(cursorIndex) = 0
+    ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 0 THEN
+      whiteBar = whiteBar + 1: pieces(cursorIndex) = 0
+    ENDIF
+    ' Place moving checker
+    IF turnIsWhite THEN
+      pieces(cursorIndex) = pieces(cursorIndex) + 1
+    ELSE
+      pieces(cursorIndex) = pieces(cursorIndex) - 1
+    ENDIF
+    ' Consume die
+    IF usedDie = 1 THEN
+      m1 = 0
+    ELSE
+      m2 = 0
+    ENDIF
+    hasPicked = 0
+    ' Redraw after move
+    ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+    BuildValidPoints pieces(), validPoints(), turnIsWhite
+    ' Reposition cursor
+    FOR i = 0 TO 23
+      IF validPoints(i) THEN
+        cursorIndex = i: EXIT FOR
+      ENDIF
+    NEXT
+    DrawCursor cursorIndex, 0
   ENDIF
 END SUB
+
 
 
 SUB DoOver
@@ -495,64 +552,62 @@ SUB EndTurn
   NEXT
 END SUB
 
-SUB barOff
-  LOCAL iFlash, dist, idx
-  ' Build the legal re-entry spots based on your dice
+' === Bar-Off Subroutine ===
+SUB BarOff
+  LOCAL iFlash, useDie, entryPt
+  ' Build valid re-entry points
   BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
-
-  ' If the cursor is on a valid re-entry point, do it
-  IF validPoints(cursorIndex) THEN
-    DrawCursor cursorIndex, 1
-    ' Capture opponent blot if there
-    IF turnIsWhite AND pieces(cursorIndex) < 0 THEN
-      blackBar = blackBar + 1: pieces(cursorIndex) = 0
-    ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 0 THEN
-      whiteBar = whiteBar + 1: pieces(cursorIndex) = 0
-    ENDIF
-
-    ' Take one from your bar and place it
-    IF turnIsWhite THEN
-      whiteBar = whiteBar - 1
-      pieces(cursorIndex) = pieces(cursorIndex) + 1
+  entryPt = cursorIndex
+  ' Determine which die corresponds to this point
+  IF turnIsWhite THEN
+    IF entryPt = (m1 - 1) THEN
+      useDie = 1
+    ELSEIF entryPt = (m2 - 1) THEN
+      useDie = 2
     ELSE
-      blackBar = blackBar - 1
-      pieces(cursorIndex) = pieces(cursorIndex) - 1
-    ENDIF
-
-    ' Consume the matching die
-    dist = ABS(cursorIndex - BAR_INDEX)
-    IF dist = m1 THEN 
-      m1 = 0 
-    ELSE 
-      m2 = 0 
-    ENDIF
-
-    ' Redraw the board
-    ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
-
-    ' If you still have bar pieces and dice left, stay in bar-off state
-    IF ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) AND (m1 > 0 OR m2 > 0) THEN
+      ' Invalid re-entry: flash cursor
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
       EXIT SUB
     ENDIF
-
-    ' Otherwise switch back to normal moves
-    state = 2
-    BuildValidPoints pieces(), validPoints(), turnIsWhite
-    FOR idx = 0 TO 23
-      IF validPoints(idx) THEN 
-        cursorIndex = idx 
-        EXIT FOR
-      ENDIF
-    NEXT
-    DrawCursor cursorIndex, 0
-
   ELSE
-    ' Invalid spot: blink cursor
-    FOR iFlash = 1 TO 3
-      DrawCursor cursorIndex, 1: PAUSE 100
-      DrawCursor cursorIndex, 0: PAUSE 100
-    NEXT
+    IF entryPt = (24 - m1) THEN
+      useDie = 1
+    ELSEIF entryPt = (24 - m2) THEN
+      useDie = 2
+    ELSE
+      ' Invalid re-entry: flash cursor
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
+      EXIT SUB
+    ENDIF
   ENDIF
+  ' Capture blot if present
+  IF turnIsWhite AND pieces(entryPt) < 0 THEN
+    blackBar = blackBar + 1: pieces(entryPt) = 0
+  ELSEIF NOT turnIsWhite AND pieces(entryPt) > 0 THEN
+    whiteBar = whiteBar + 1: pieces(entryPt) = 0
+  ENDIF
+  ' Remove from bar and place checker
+  IF turnIsWhite THEN
+    whiteBar = whiteBar - 1: pieces(entryPt) = pieces(entryPt) + 1
+  ELSE
+    blackBar = blackBar - 1: pieces(entryPt) = pieces(entryPt) - 1
+  ENDIF
+  ' Consume die
+  IF useDie = 1 THEN 
+    m1 = 0 
+  ELSE 
+    m2 = 0 
+  ENDIF
+  hasPicked = 0
+  DrawCursor cursorIndex, 0
+  ' Redraw board
+  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
 END SUB
 
 ' === Build Re-Entry Points ===

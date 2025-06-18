@@ -3,6 +3,7 @@
 ' === Constants ===
 CONST W = 320
 CONST H = 320
+CONST BAR_INDEX = 24
 CONST POINT_W = 23.666
 CONST BAR_W = 18
 CONST TRAY_W = 18
@@ -20,292 +21,156 @@ triColor2      = RGB(255,255,255)
 cursorColor    = RGB(255,0,0)
 selectedCursorColor = RGB(0,255,0)
 
-' === Helper Functions for Screen Flip ===
-FUNCTION FX(x)
-  IF screenFlipped THEN
-    FX = W - x
-  ELSE
-    FX = x
-  ENDIF
-END FUNCTION
-
-FUNCTION FY(y)
-  IF screenFlipped THEN
-    FY = H - y
-  ELSE
-    FY = y
-  ENDIF
-END FUNCTION
-
 ' === Set up game ===
-DIM i, rolls, bd, wd
 DIM pieces(23)
-DIM whiteBar, blackBar
-whiteBar = 0
-blackBar = 0
 DIM d1, d2, m1, m2
-DIM backupPieces(23)
-DIM backupM1, backupM2
+DIM whiteBar, blackBar
 DIM x%(2), y%(2)
-DIM validPoints(23)
-DIM cursorSeq(23)
-DIM leftToRight(23)
-DIM rightToLeft(23)
-FOR i = 0 TO 11
-  leftToRight(i) = 11 - i
-NEXT
-FOR i = 0 TO 11
-  leftToRight(i + 12) = i + 12
-NEXT
-FOR i = 0 TO 23
-  rightToLeft(i) = leftToRight(23 - i)
-NEXT
+DIM state          ' 0=not rolled, 1=rolled, 2=no more moves
+DIM hasPicked
+DIM cursorIndex, pickedPoint
+DIM validPoints(23), cursorSeq(23)
+
 turnIsWhite = 1
 canRoll = 1
-screenFlipped = 0
-cursorIndex = -1
-hasPicked = 0
-pickedPoint = -1
 RANDOMIZE TIMER
-
-' === Opening Roll to Determine First Player ===
-do
-  bd = INT(RND * 6) + 1
-  wd = INT(RND * 6) + 1
-loop while bd = wd
-IF bd > wd THEN
-  turnIsWhite = 0
-  screenFlipped = 1
-  d1 = bd
-  d2 = wd
-ELSE
-  turnIsWhite = 1
-  screenFlipped = 0
-  d1 = wd
-  d2 = bd
-ENDIF
-m1 = d1
-m2 = d2
-DrawDice turnIsWhite
-PAUSE 1000
-canRoll = 0
 
 ' === Initial Draw ===
 ClearScreen
 DrawBoard
 DrawBearTray
 InitPieces pieces()
-DrawCheckers pieces()
 DrawCenterBar
+DrawCheckers pieces()
 DrawDice turnIsWhite
 BuildValidPoints pieces(), validPoints(), turnIsWhite
-IF turnIsWhite THEN
-  FOR i = 0 TO 23
-    cursorSeq(i) = leftToRight(i)
-  NEXT
-ELSE
-  FOR i = 0 TO 23
-    cursorSeq(i) = rightToLeft(i)
-  NEXT
-ENDIF
 FOR i = 0 TO 23
-  IF validPoints(cursorSeq(i)) THEN
-    cursorIndex = cursorSeq(i)
-    EXIT FOR
-  ENDIF
+  cursorSeq(i) = i
 NEXT
-' Snapshot start-of-turn state
-FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
-backupM1 = m1: backupM2 = m2
-' Backup bar counts
-backupWhiteBar = whiteBar: backupBlackBar = blackBar
+hasPicked = 0
+pickedPoint = -1
+cursorIndex = 0
+DO WHILE validPoints(cursorIndex) = 0
+  cursorIndex = cursorIndex + 1
+LOOP
 
 ' === Main Loop ===
 DO
   k$ = INKEY$
 
-  ' Roll dice mid-turn
-  IF k$ = " " AND canRoll = 1 THEN
-    rolls = INT(RND * 8) + 11
-    FOR i = 1 TO rolls
-      d1 = INT(RND * 6) + 1
-      d2 = INT(RND * 6) + 1
-      DrawDice turnIsWhite
-      PAUSE 80
-    NEXT
-    m1 = d1
-    m2 = d2
-    canRoll = 0
-    ' Snapshot start-of-turn state
-    FOR i = 0 TO 23: backupPieces(i) = pieces(i): NEXT
-    backupM1 = m1: backupM2 = m2
-    ' Backup bar counts
-    backupWhiteBar = whiteBar: backupBlackBar = blackBar
-  ENDIF
+  SELECT CASE k$
+    CASE " "
+      IF canRoll = 1 THEN RollDice: BuildValidPoints pieces(), validPoints(), turnIsWhite: hasPicked = 0
+      FOR i = 0 TO 23
+        IF validPoints(i) THEN
+          cursorIndex = i
+          EXIT FOR
+        ENDIF
+      NEXT
 
-  ' Do-over handler
-  IF (k$ = "C" OR k$ = "c") AND canRoll = 0 THEN
-    FOR i = 0 TO 23
-      pieces(i) = backupPieces(i)
-    NEXT
-    m1 = backupM1
-    m2 = backupM2
-    ' Restore captured bars
-    whiteBar = backupWhiteBar
-    blackBar = backupBlackBar
-    hasPicked = 0
-    ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
-    BuildValidPoints pieces(), validPoints(), turnIsWhite
-    DrawCursor cursorIndex, 0
-  ENDIF
+    CASE "T", "t"
+      IF canRoll = 0 THEN EndTurn 'AND m1 = 0 AND m2 = 0 
 
-  ' End turn and flip board
-  IF (k$ = "T" OR k$ = "t") AND canRoll = 0 AND m1 = 0 AND m2 = 0 AND hasPicked = 0 THEN
-    turnIsWhite = 1 - turnIsWhite
-    canRoll = 1
-    screenFlipped = 1 - screenFlipped
-    IF turnIsWhite THEN
-      FOR i = 0 TO 23: cursorSeq(i) = leftToRight(i): NEXT
-    ELSE
-      FOR i = 0 TO 23: cursorSeq(i) = rightToLeft(i): NEXT
-    ENDIF
-    ClearScreen
-    DrawBoard
-    DrawBearTray
-    DrawCheckers pieces()
-    DrawCenterBar
+    CASE "C", "c"
+      IF state <> 0 THEN DoOver
+
+    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129)
+      IF canRoll = 0 THEN NavigateCursor  ' left/up/right/down
+
+    CASE CHR$(13)
+      if canRoll = 0 THEN PickDrop
+
+  END SELECT
+
+LOOP  ' Main Loop
+
+SUB RollDice
+  rolls = INT(RND * 8) + 11
+  FOR i = 1 TO rolls
+    d1 = INT(RND * 6) + 1
+    d2 = INT(RND * 6) + 1
     DrawDice turnIsWhite
-    BuildValidPoints pieces(), validPoints(), turnIsWhite
-    FOR i = 0 TO 23
-      IF validPoints(cursorSeq(i)) THEN
-        cursorIndex = cursorSeq(i)
-        EXIT FOR
-      ENDIF
-    NEXT
+  PAUSE 80
+  NEXT
+  m1 = d1
+  m2 = d2
+  canRoll = 0
+end SUB
+
+' === Navigate Cursor Subroutine ===
+SUB NavigateCursor
+  LOCAL newIdx, row, col, colVis
+  LOCAL keyChar$  ' string to hold key press
+
+  ' Erase old cursor
+  DrawCursor cursorIndex, 1
+  ' Determine row (visual) and raw column
+  row = cursorIndex \ 12    ' 0 = top row, 1 = bottom row
+  col = cursorIndex MOD 12
+  ' Convert to visual column for top row inversion
+  IF row = 0 THEN
+    colVis = 11 - col
+  ELSE
+    colVis = col
   ENDIF
 
-  ' Move cursor left
-  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(130) AND cursorIndex >= 0 THEN
-    DrawCursor cursorIndex, 1
-    FOR i = 0 TO 23
-      IF cursorSeq(i) = cursorIndex THEN EXIT FOR
-    NEXT
-    DO
-      i = (i - 1 + 24) MOD 24
-      cursorIndex = cursorSeq(i)
-    LOOP WHILE validPoints(cursorIndex) = 0
-    DrawCursor cursorIndex, 0
-  ENDIF
-
-  ' Move cursor right
-  IF (m1 > 0 OR m2 > 0 OR hasPicked = 1) AND k$ = CHR$(131) AND cursorIndex >= 0 THEN
-    DrawCursor cursorIndex, 1
-    FOR i = 0 TO 23
-      IF cursorSeq(i) = cursorIndex THEN EXIT FOR
-    NEXT
-    DO
-      i = (i + 1) MOD 24
-      cursorIndex = cursorSeq(i)
-    LOOP WHILE validPoints(cursorIndex) = 0
-    DrawCursor cursorIndex, 0
-  ENDIF
-
-  ' Pick up / Drop off
-  IF k$ = CHR$(13) AND cursorIndex >= 0 AND (hasPicked = 1 OR m1 > 0 OR m2 > 0) THEN
-    IF hasPicked = 0 THEN
-      IF validPoints(cursorIndex) THEN
-        pickedPoint = cursorIndex
-        IF turnIsWhite THEN
-          pieces(pickedPoint) = pieces(pickedPoint) - 1
-        ELSE
-          pieces(pickedPoint) = pieces(pickedPoint) + 1
-        ENDIF
-        DrawBoard
-        DrawCheckers pieces()
-        DrawDice turnIsWhite
-        hasPicked = 1
-        DrawCursor cursorIndex, 0
-        ' Restrict valid moves to remaining pips and direction
-        FOR i = 0 TO 23
-          dist = ABS(i - pickedPoint)
-          IF (m1 > 0 AND dist = m1) OR (m2 > 0 AND dist = m2) THEN
-            IF turnIsWhite THEN
-              IF pieces(i) >= -1 AND i > pickedPoint THEN
-                validPoints(i) = 1
-              ELSE
-                validPoints(i) = 0
-              ENDIF
-            ELSE
-              IF pieces(i) <= 1 AND i < pickedPoint THEN
-                validPoints(i) = 1
-              ELSE
-                validPoints(i) = 0
-              ENDIF
-            ENDIF
-          ELSE
-            validPoints(i) = 0
-          ENDIF
-        NEXT
-        ' If no valid moves, allow dropping back on original point only
-        countValid = 0
-        FOR j = 0 TO 23: IF validPoints(j) = 1 THEN countValid = countValid + 1: NEXT
-        IF countValid = 0 THEN validPoints(pickedPoint) = 1
-      ENDIF
-    ELSE
-      dest = cursorIndex
-      dist = ABS(dest - pickedPoint)
-      IF dest = pickedPoint THEN
-        ' Drop back without penalty
-        IF turnIsWhite THEN
-          pieces(pickedPoint) = pieces(pickedPoint) + 1
-        ELSE
-          pieces(pickedPoint) = pieces(pickedPoint) - 1
-        ENDIF
-        hasPicked = 0
-        ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
-        BuildValidPoints pieces(), validPoints(), turnIsWhite
-      ELSEIF dist = m1 OR dist = m2 THEN
-        ' Capture blot if present
-        IF turnIsWhite AND pieces(dest) = -1 THEN
-          blackBar = blackBar + 1
-          pieces(dest) = 0
-        ELSEIF NOT turnIsWhite AND pieces(dest) = 1 THEN
-          whiteBar = whiteBar + 1
-          pieces(dest) = 0
-        ENDIF
-        ' Place moving piece
-        IF turnIsWhite THEN
-          pieces(dest) = pieces(dest) + 1
-        ELSE
-          pieces(dest) = pieces(dest) - 1
-        ENDIF
-        ' Consume die used for this move
-        IF dist = m1 THEN
-          m1 = 0
-        ELSE
-          m2 = 0
-        ENDIF
-        ' Update display immediately
-        DrawBoard
-        DrawCheckers pieces()
-        DrawCenterBar
-        DrawDice turnIsWhite
-        hasPicked = 0
-        DrawCursor cursorIndex, 0
-        pickedPoint = -1
-        FOR i = 0 TO 23: validPoints(i)=0: NEXT
-        BuildValidPoints pieces(), validPoints(), turnIsWhite
-        IF m1 = 0 AND m2 = 0 THEN
-          DrawCursor cursorIndex, 1
-        ENDIF
-      ENDIF
+  ' Read key and invert if it's brown's turn
+  keyChar$ = k$
+  IF NOT turnIsWhite THEN
+    IF keyChar$ = CHR$(130) THEN
+      keyChar$ = CHR$(131)
+    ELSEIF keyChar$ = CHR$(131) THEN
+      keyChar$ = CHR$(130)
+    ELSEIF keyChar$ = CHR$(128) THEN
+      keyChar$ = CHR$(129)
+    ELSEIF keyChar$ = CHR$(129) THEN
+      keyChar$ = CHR$(128)
     ENDIF
   ENDIF
 
-LOOP
+  ' Handle directional input on normalized keyChar$
+  IF keyChar$ = CHR$(130) THEN       ' Left
+    colVis = (colVis - 1 + 12) MOD 12
+  ELSEIF keyChar$ = CHR$(131) THEN   ' Right
+    colVis = (colVis + 1) MOD 12
+  ELSEIF keyChar$ = CHR$(129) THEN   ' Down
+    IF row = 0 THEN row = 1
+  ELSEIF keyChar$ = CHR$(128) THEN   ' Up
+    IF row = 1 THEN row = 0
+  ENDIF
+
+  ' Compute new index from visual coords
+  IF row = 0 THEN
+    newIdx = 11 - colVis
+  ELSE
+    newIdx = 12 + colVis
+  ENDIF
+
+  cursorIndex = newIdx
+  ' Draw new cursor
+  DrawCursor cursorIndex, 0
+END SUB
+
+
+
+
+
+SUB PickDrop
+  ' Placeholder: pick up or drop logic goes here
+END SUB
+
+SUB DoOver
+  FOR i = 0 TO 23: pieces(i) = backupPieces(i): NEXT
+  m1 = backupM1: m2 = backupM2: whiteBar = backupWhiteBar: blackBar = backupBlackBar
+  canRoll = 0: state = 1: hasPicked = 0
+  BuildValidPoints pieces(), validPoints(), turnIsWhite
+  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+  FOR i = 0 TO 23: cursorIndex = i: EXIT FOR IF validPoints(i): NEXT
+  DrawCursor cursorIndex, 0
+END SUB
 
 ' === Clear Screen ===
-SUB ClearScreen
+SUB ClearScreen 
   COLOR bgColor, bgColor
   CLS
   COLOR RGB(255,255,255), bgColor
@@ -470,29 +335,34 @@ SUB DrawCenterBar
   NEXT
 END SUB
 
-' === Initialize Pieces Subroutine ===
 SUB InitPieces(p())
+  ' Clear all points
+  FOR i = 0 TO 23: p(i) = 0: NEXT
+  ' Place starting checkers:
+  ' Two white on space 24 (upper-right) ? index 0
   p(0) = 2
+  ' Five white on space 13 ? index 11
   p(11) = 5
+  ' Three white on space 8 ? index 16
   p(16) = 3
+  ' Five white on space 6 ? index 18
   p(18) = 5
+  ' Two black on space 1 (lower-right) ? index 23
   p(23) = -2
+  ' Five black on space 12 ? index 12
   p(12) = -5
-  p(7)  = -3
-  p(5)  = -5
+  ' Three black on space 17 ? index 7
+  p(7) = -3
+  ' Five black on space 19 ? index 5
+  p(5) = -5
 END SUB
 
-' === Build Valid Points Subroutine ===
+' === Build Valid Points ===
 SUB BuildValidPoints(p(), v(), isWhite)
   LOCAL i
+  ' Allow cursor to move to any space; mark all points as valid
   FOR i = 0 TO 23
-    IF isWhite AND p(i) > 0 THEN
-      v(i) = 1
-    ELSEIF NOT isWhite AND p(i) < 0 THEN
-      v(i) = 1
-    ELSE
-      v(i) = 0
-    ENDIF
+    v(i) = 1
   NEXT
 END SUB
 
@@ -528,3 +398,49 @@ SUB DrawCheckers(p())
 SkipDraw:
   NEXT
 END SUB
+
+' === End Turn Subroutine ===
+SUB EndTurn
+  ' Flip the screen orientation for the next player
+  screenFlipped = 1 - screenFlipped
+  ' Switch player
+  turnIsWhite = 1 - turnIsWhite
+  ' Allow rolling again
+  canRoll = 1
+  state = 0
+  ' Redraw everything in the new orientation
+  ClearScreen
+  DrawBoard
+  DrawBearTray
+  InitPieces pieces()   ' maintain current positions
+  DrawCheckers pieces()
+  DrawCenterBar
+  DrawDice turnIsWhite
+  ' Reset valid points and cursor
+  BuildValidPoints pieces(), validPoints(), turnIsWhite
+  ' Position cursor at first valid location
+  FOR i = 0 TO 23
+    IF validPoints(i) THEN
+      cursorIndex = i
+      EXIT FOR
+    ENDIF
+  NEXT
+  DrawCursor cursorIndex, 0
+END SUB
+
+' === Helper Functions ===
+FUNCTION FX(x)
+  IF screenFlipped THEN
+    FX = W - x
+  ELSE
+    FX = x
+  ENDIF
+END FUNCTION
+
+FUNCTION FY(y)
+  IF screenFlipped THEN
+    FY = H - y
+  ELSE
+    FY = y
+  ENDIF
+END FUNCTION

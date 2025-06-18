@@ -159,8 +159,40 @@ END SUB
 
 
 
+' === Pick or Drop Subroutine ===
 SUB PickDrop
-  ' Placeholder: pick up or drop logic goes here
+  LOCAL iFlash
+  ' If nothing picked yet, attempt pick up
+  IF hasPicked = 0 THEN
+    ' Check for correct-color piece
+    IF (turnIsWhite AND pieces(cursorIndex) > 0) OR (NOT turnIsWhite AND pieces(cursorIndex) < 0) THEN
+      pickedPoint = cursorIndex
+      ' Remove one checker from board
+      IF turnIsWhite THEN
+        pieces(pickedPoint) = pieces(pickedPoint) - 1
+      ELSE
+        pieces(pickedPoint) = pieces(pickedPoint) + 1
+      ENDIF
+      hasPicked = 1
+      ' Redraw to remove the picked checker
+      ClearScreen
+      DrawBoard
+      DrawBearTray
+      DrawCheckers pieces()
+      DrawCenterBar
+      DrawDice turnIsWhite
+      ' Show picked cursor in selected color
+      DrawCursor cursorIndex, 0
+    ELSE
+      ' Invalid pick: flash cursor three times
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1 : PAUSE 100
+        DrawCursor cursorIndex, 0 : PAUSE 100
+      NEXT
+    ENDIF
+  ELSE
+    ' Drop-off logic to be implemented
+  ENDIF
 END SUB
 
 SUB DoOver

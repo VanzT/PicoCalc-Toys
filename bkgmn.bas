@@ -60,13 +60,17 @@ DO
 
   SELECT CASE k$
     CASE " "
-      IF canRoll = 1 THEN RollDice: BuildValidPoints pieces(), validPoints(), turnIsWhite: hasPicked = 0
-      FOR i = 0 TO 23
-        IF validPoints(i) THEN
-          cursorIndex = i
-          EXIT FOR
-        ENDIF
-      NEXT
+      IF canRoll = 1 THEN 
+        RollDice
+        BuildValidPoints pieces(),validPoints(),turnIsWhite
+        hasPicked = 0
+        FOR i = 0 TO 23
+          IF validPoints(i) THEN
+            cursorIndex = i
+            EXIT FOR
+          ENDIF
+        NEXt
+      endif 
 
     CASE "T", "t"
       IF canRoll = 0 THEN EndTurn 'AND m1 = 0 AND m2 = 0 

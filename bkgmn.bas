@@ -26,6 +26,7 @@ DIM pieces(23)
 DIM movesLeft, dieVal, doubleFlag  ' doubles rule support
 DIM d1, d2, m1, m2
 DIM whiteBar, blackBar
+DIM barActive, allowEnd
 DIM x%(2), y%(2)
 DIM state          ' 0=not rolled, 1=rolled, 2=no more moves
 DIM hasPicked
@@ -38,6 +39,7 @@ blackCursor = 0
 turnIsWhite = 1
 canRoll = 1
 RANDOMIZE TIMER
+
 ' === Opening Roll to Determine First Player ===
 do
   bd = INT(RND * 6) + 1
@@ -61,7 +63,7 @@ PAUSE 1000
 canRoll = 0
 
 ' testing variables
-'whiteBar = 2
+' whiteBar = 1
 ' clear when done 
 
 
@@ -108,7 +110,35 @@ DO
       endif 
 
     CASE "T", "t"
-      IF canRoll = 0 THEN EndTurn 'AND m1 = 0 AND m2 = 0 
+      IF canRoll = 0 THEN
+        ' — are there any checkers on the bar? —
+        IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
+          ' build bar-reentry map
+          BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
+          ' scan for any legal re-entry
+          legalExists = 0
+          FOR i = 0 TO 23
+            IF validPoints(i) = 1 THEN
+              legalExists = 1
+              EXIT FOR
+            ENDIF
+          NEXT
+          ' if no re-entry OR (double rolls but no movesLeft) ? end turn
+          IF legalExists = 0 OR (doubleFlag AND movesLeft = 0) THEN
+            EndTurn
+          ENDIF
+        ELSE
+          ' — no bar: only end when all pips are gone —
+          IF (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
+            EndTurn
+          ENDIF
+        ENDIF
+      ENDIF
+        ' — otherwise (no bar), only end once all dice are consumed
+        ELSEIF m1 = 0 AND m2 = 0 THEN
+          EndTurn
+        ENDIF
+      ENDIF
 
     CASE "C", "c"
       IF state <> 0 THEN DoOver
@@ -284,6 +314,22 @@ SUB PickDrop
     ENDIF
   ELSE
     ' Drop-off phase
+    ' — DISALLOW landing on a point with 2+ opponent checkers —
+    IF turnIsWhite AND pieces(cursorIndex) < -1 THEN
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
+      EXIT SUB
+    ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 1 THEN
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
+      EXIT SUB
+    ENDIF
+
+
     ' If returning to origin, cancel pick without penalty
     IF cursorIndex = origPick THEN
       IF turnIsWhite THEN
@@ -639,6 +685,16 @@ SUB BarOff
   ' Build valid re-entry points
   BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
   entryPt = cursorIndex
+  
+    ' Disallow onto blocked points
+  IF validPoints(entryPt) = 0 THEN
+    FOR iFlash = 1 TO 3
+      DrawCursor cursorIndex, 1: PAUSE 100
+      DrawCursor cursorIndex, 0: PAUSE 100
+    NEXT
+    EXIT SUB
+  ENDIF
+  
   ' Determine which die corresponds to this point
   IF turnIsWhite THEN
     IF entryPt = (m1 - 1) THEN

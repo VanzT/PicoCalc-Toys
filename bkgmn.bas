@@ -241,15 +241,7 @@ SUB PickDrop
     ENDIF
   ELSE
     ' Drop-off phase
-    ' Disallow backwards moves: must move forward relative to origPick
-    IF (turnIsWhite AND cursorIndex <= origPick) OR (NOT turnIsWhite AND cursorIndex >= origPick) THEN
-      FOR iFlash = 1 TO 3
-        DrawCursor cursorIndex, 1: PAUSE 100
-        DrawCursor cursorIndex, 0: PAUSE 100
-      NEXT
-      EXIT SUB
-    ENDIF
-    ' If returning to origin, cancel pick
+    ' If returning to origin, cancel pick without penalty
     IF cursorIndex = origPick THEN
       IF turnIsWhite THEN
         pieces(origPick) = pieces(origPick) + 1
@@ -259,6 +251,14 @@ SUB PickDrop
       hasPicked = 0
       ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
       DrawCursor cursorIndex, 0
+      EXIT SUB
+    ENDIF
+    ' Disallow backwards moves (excluding the original point)
+    IF (turnIsWhite AND cursorIndex < origPick) OR (NOT turnIsWhite AND cursorIndex > origPick) THEN
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
       EXIT SUB
     ENDIF
     ' Compute move distance
@@ -297,7 +297,7 @@ SUB PickDrop
     hasPicked = 0
     ' Redraw after move
     ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
-    BuildValidPoints pieces(), validPoints(), turnIsWhite
+    BuildValidPoints pieces(), validPoints(), turnIsWhite    
     if m1 = 0 and m2 = 0 then
       DrawCursor cursorIndex, 1
     ELSE 

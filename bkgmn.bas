@@ -96,7 +96,7 @@ DO
     CASE CHR$(13)
       IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
         barOff
-      Elseif canRoll = 0 THEN 
+      Elseif canRoll = 0 and (m1 <> 0 OR m2 <> 0) THEN 
         PickDrop
       endif
 
@@ -273,12 +273,16 @@ SUB PickDrop
     ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
     BuildValidPoints pieces(), validPoints(), turnIsWhite
     ' Reposition cursor
-    FOR i = 0 TO 23
-      IF validPoints(i) THEN
-        cursorIndex = i: EXIT FOR
-      ENDIF
-    NEXT
-    DrawCursor cursorIndex, 0
+    'FOR i = 0 TO 23
+    '  IF validPoints(i) THEN
+    '    cursorIndex = i: EXIT FOR
+    '  ENDIF
+    'NEXT
+    if m1 = 0 and m2 = 0 then
+      DrawCursor cursorIndex, 1
+    ELSE 
+      DrawCursor cursorIndex, 0
+    ENDIF  
   ENDIF
 END SUB
 

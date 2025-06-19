@@ -605,7 +605,7 @@ SUB BarOff
     m2 = 0 
   ENDIF
   hasPicked = 0
-  DrawCursor cursorIndex, 0
+  DrawCursor cursorIndex, 1
   ' Redraw board
   ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
 END SUB

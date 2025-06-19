@@ -188,6 +188,21 @@ SUB NavigateCursor
   DrawCursor cursorIndex, 0
 END SUB
 
+' === BuildMovePoints Subroutine ===
+SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
+  LOCAL i, dist
+  FOR i = 0 TO 23
+    v(i) = 0
+    dist = ABS(i - origPick)
+    ' Must match one of your remaining dice
+    IF (dist = die1 AND die1 > 0) OR (dist = die2 AND die2 > 0) THEN
+      ' And must move forward:
+      IF (isWhite AND i > origPick) OR (NOT isWhite AND i < origPick) THEN
+        v(i) = 1
+      ENDIF
+    ENDIF
+  NEXT
+END SUB
 
 
 ' === Pick or Drop Subroutine ===
@@ -214,6 +229,9 @@ SUB PickDrop
       hasPicked = 1
       ' Redraw after removal
       ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+      ' Build forward-only valid drop targets
+      BuildMovePoints pieces(), validPoints(), turnIsWhite, origPick, m1, m2
+      ' Draw cursor on picked location
       DrawCursor cursorIndex, 0
     ELSE
       FOR iFlash = 1 TO 3
@@ -223,6 +241,14 @@ SUB PickDrop
     ENDIF
   ELSE
     ' Drop-off phase
+    ' Disallow backwards moves: must move forward relative to origPick
+    IF (turnIsWhite AND cursorIndex <= origPick) OR (NOT turnIsWhite AND cursorIndex >= origPick) THEN
+      FOR iFlash = 1 TO 3
+        DrawCursor cursorIndex, 1: PAUSE 100
+        DrawCursor cursorIndex, 0: PAUSE 100
+      NEXT
+      EXIT SUB
+    ENDIF
     ' If returning to origin, cancel pick
     IF cursorIndex = origPick THEN
       IF turnIsWhite THEN
@@ -272,17 +298,11 @@ SUB PickDrop
     ' Redraw after move
     ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
     BuildValidPoints pieces(), validPoints(), turnIsWhite
-    ' Reposition cursor
-    'FOR i = 0 TO 23
-    '  IF validPoints(i) THEN
-    '    cursorIndex = i: EXIT FOR
-    '  ENDIF
-    'NEXT
     if m1 = 0 and m2 = 0 then
       DrawCursor cursorIndex, 1
     ELSE 
       DrawCursor cursorIndex, 0
-    ENDIF  
+    ENDIF 
   ENDIF
 END SUB
 
@@ -541,7 +561,6 @@ SUB EndTurn
   ClearScreen
   DrawBoard
   DrawBearTray
-  InitPieces pieces()   ' maintain current positions
   DrawCheckers pieces()
   DrawCenterBar
   DrawDice turnIsWhite

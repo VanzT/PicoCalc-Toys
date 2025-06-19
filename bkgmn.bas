@@ -23,6 +23,7 @@ selectedCursorColor = RGB(0,255,0)
 
 ' === Set up game ===
 DIM pieces(23)
+DIM movesLeft, dieVal, doubleFlag  ' doubles rule support
 DIM d1, d2, m1, m2
 DIM whiteBar, blackBar
 DIM x%(2), y%(2)
@@ -83,20 +84,21 @@ DO
     CASE "C", "c"
       IF state <> 0 THEN DoOver
     
-    CASE "B", "b"
+    CASE "B", "b"  ' BEARing off
       Print "state= ", state
-    ' Only valid if youve rolled and have pieces on the bar
-    IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
+    ' Only valid if youve rolled and have NO pieces on the bar
+    IF canRoll = 0 AND ((turnIsWhite AND whiteBar = 0) OR (NOT turnIsWhite AND blackBar = 0)) THEN
       barOff
     ENDIF
 
-    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129)
-      IF canRoll = 0 AND (m1 <> 0 OR m2 <> 0) THEN NavigateCursor  ' left/up/right/down
+    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129) ' left/up/right/down
+      ' Navigate only if moves remain
+      IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN NavigateCursor  
 
-    CASE CHR$(13)
+    CASE CHR$(13) ' pickup/drop off / enter
       IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
         barOff
-      Elseif canRoll = 0 and (m1 <> 0 OR m2 <> 0) THEN 
+      Elseif canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN 
         PickDrop
       endif
 
@@ -110,10 +112,18 @@ SUB RollDice
     d1 = INT(RND * 6) + 1
     d2 = INT(RND * 6) + 1
     DrawDice turnIsWhite
-  PAUSE 80
+    PAUSE 80
   NEXT
-  m1 = d1
-  m2 = d2
+  ' Set up dice values and doubles count
+  m1 = d1: m2 = d2
+  IF d1 = d2 THEN
+    doubleFlag = 1
+    dieVal = d1
+    movesLeft = 4
+  ELSE
+    doubleFlag = 0
+    movesLeft = 2
+  ENDIF
   canRoll = 0
 end SUB
 
@@ -194,11 +204,16 @@ SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
   FOR i = 0 TO 23
     v(i) = 0
     dist = ABS(i - origPick)
-    ' Must match one of your remaining dice
-    IF (dist = die1 AND die1 > 0) OR (dist = die2 AND die2 > 0) THEN
-      ' And must move forward:
-      IF (isWhite AND i > origPick) OR (NOT isWhite AND i < origPick) THEN
+    IF doubleFlag THEN
+      ' doubles allow any matching dieVal forward
+      IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) AND dist = dieVal THEN
         v(i) = 1
+      ENDIF
+    ELSE
+      ' normal dice
+      IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) THEN
+        IF die1 > 0 AND dist = die1 THEN v(i) = 1
+        IF die2 > 0 AND dist = die2 THEN v(i) = 1
       ENDIF
     ENDIF
   NEXT
@@ -263,20 +278,34 @@ SUB PickDrop
     ENDIF
     ' Compute move distance
     dist = ABS(cursorIndex - origPick)
-    ' Determine which die to use
-    IF m1 > 0 AND dist = m1 THEN
-      usedDie = 1
-    ELSEIF m2 > 0 AND dist = m2 THEN
-      usedDie = 2
+    ' Determine which die to use or consume a double
+    IF doubleFlag THEN
+      IF dist = dieVal AND movesLeft > 0 THEN
+        usedDie = 0
+        movesLeft = movesLeft - 1
+      ELSE
+        ' Invalid drop: flash cursor
+        FOR iFlash = 1 TO 3
+          DrawCursor cursorIndex, 1: PAUSE 100
+          DrawCursor cursorIndex, 0: PAUSE 100
+        NEXT
+        EXIT SUB
+      ENDIF
     ELSE
-      ' Invalid drop: flash cursor
-      FOR iFlash = 1 TO 3
-        DrawCursor cursorIndex, 1: PAUSE 100
-        DrawCursor cursorIndex, 0: PAUSE 100
-      NEXT
-      EXIT SUB
+      IF m1 > 0 AND dist = m1 THEN
+        usedDie = 1
+      ELSEIF m2 > 0 AND dist = m2 THEN
+        usedDie = 2
+      ELSE
+        ' Invalid drop: flash cursor
+        FOR iFlash = 1 TO 3
+          DrawCursor cursorIndex, 1: PAUSE 100
+          DrawCursor cursorIndex, 0: PAUSE 100
+        NEXT
+        EXIT SUB
+      ENDIF
     ENDIF
-    ' Capture blot if present
+    ' Capture blot if present if present
     IF turnIsWhite AND pieces(cursorIndex) < 0 THEN
       blackBar = blackBar + 1: pieces(cursorIndex) = 0
     ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 0 THEN
@@ -288,11 +317,13 @@ SUB PickDrop
     ELSE
       pieces(cursorIndex) = pieces(cursorIndex) - 1
     ENDIF
-    ' Consume die
-    IF usedDie = 1 THEN
-      m1 = 0
-    ELSE
-      m2 = 0
+    ' Consume pip
+    IF NOT doubleFlag THEN
+      IF usedDie = 1 THEN 
+        m1 = 0 
+      ELSE 
+        m2 = 0 
+      ENDIF
     ENDIF
     hasPicked = 0
     ' Redraw after move
@@ -621,11 +652,15 @@ SUB BarOff
   ELSE
     blackBar = blackBar - 1: pieces(entryPt) = pieces(entryPt) - 1
   ENDIF
-  ' Consume die
-  IF useDie = 1 THEN 
-    m1 = 0 
-  ELSE 
-    m2 = 0 
+  ' Consume pip or die (double)
+  IF doubleFlag THEN
+    IF movesLeft > 0 THEN movesLeft = movesLeft - 1
+  ELSE
+    IF useDie = 1 THEN 
+      m1 = 0 
+    ELSE 
+      m2 = 0 
+    ENDIF
   ENDIF
   hasPicked = 0
   DrawCursor cursorIndex, 1

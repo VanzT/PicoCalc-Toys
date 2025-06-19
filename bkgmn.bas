@@ -32,6 +32,9 @@ DIM hasPicked
 DIM cursorIndex, pickedPoint
 DIM validPoints(23), cursorSeq(23)
 
+whiteCursor = 23
+blackCursor = 0
+
 turnIsWhite = 1
 canRoll = 1
 RANDOMIZE TIMER
@@ -64,18 +67,23 @@ LOOP
 DO
   k$ = INKEY$
 
+  if m1 = 0 and m2 = 0 then
+    DrawCursor cursorIndex, 1
+  ELSE 
+    DrawCursor cursorIndex, 0
+  ENDIF
+
   SELECT CASE k$
     CASE " "
       IF canRoll = 1 THEN 
         RollDice
         BuildValidPoints pieces(),validPoints(),turnIsWhite
         hasPicked = 0
-        FOR i = 0 TO 23
-          IF validPoints(i) THEN
-            cursorIndex = i
-            EXIT FOR
-          ENDIF
-        NEXt
+        if turnIsWhite THEN 
+          cursorIndex = whiteCursor
+        Else
+          cursorIndex = blackCursor
+        Endif 
       endif 
 
     CASE "T", "t"
@@ -90,9 +98,9 @@ DO
       bearOff
     ENDIF
 
-    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129)
+    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129) ' left/up/right/down
       ' Navigate only if moves remain
-      IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN NavigateCursor  ' left/up/right/down  ' left/up/right/down
+      IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN NavigateCursor  
 
     CASE CHR$(13)
       IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
@@ -581,6 +589,11 @@ END SUB
 
 ' === End Turn Subroutine ===
 SUB EndTurn
+  If turnIsWhite THEN
+    whiteCursor = cursorIndex
+  else
+    blackCursor = cursorIndex
+  Endif
   ' Flip the screen orientation for the next player
   screenFlipped = 1 - screenFlipped
   ' Switch player
@@ -597,13 +610,6 @@ SUB EndTurn
   DrawDice turnIsWhite
   ' Reset valid points and cursor
   BuildValidPoints pieces(), validPoints(), turnIsWhite
-  ' Position cursor at first valid location
-  FOR i = 0 TO 23
-    IF validPoints(i) THEN
-      cursorIndex = i
-      EXIT FOR
-    ENDIF
-  NEXT
 END SUB
 
 ' === Bar-Off Subroutine ===
@@ -782,11 +788,7 @@ SUB bearOff
   ' redraw board
   ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
   BuildValidPoints pieces(), validPoints(), turnIsWhite
-  FOR i = 0 TO 23
-    IF validPoints(i) THEN cursorIndex = i: EXIT FOR
-    ENDIF
-  NEXT
-  DrawCursor cursorIndex, 0
+  'DrawCursor cursorIndex, 0
   RETURN
 
 invalidOff:

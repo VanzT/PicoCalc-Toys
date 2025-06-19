@@ -37,7 +37,7 @@ canRoll = 1
 RANDOMIZE TIMER
 
 ' testing variables
-whiteBar = 2
+'whiteBar = 2
 ' clear when done 
 
 
@@ -84,18 +84,17 @@ DO
     CASE "C", "c"
       IF state <> 0 THEN DoOver
     
-    CASE "B", "b"  ' BEARing off
-      Print "state= ", state
-    ' Only valid if youve rolled and have NO pieces on the bar
-    IF canRoll = 0 AND ((turnIsWhite AND whiteBar = 0) OR (NOT turnIsWhite AND blackBar = 0)) THEN
-      barOff
+    CASE "B", "b"
+    ' Only valid if youve rolled and have pieces on the bar
+    IF canRoll = 0 THEN
+      bearOff
     ENDIF
 
-    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129) ' left/up/right/down
+    CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129)
       ' Navigate only if moves remain
-      IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN NavigateCursor  
+      IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN NavigateCursor  ' left/up/right/down  ' left/up/right/down
 
-    CASE CHR$(13) ' pickup/drop off / enter
+    CASE CHR$(13)
       IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
         barOff
       Elseif canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN 
@@ -537,6 +536,7 @@ SUB InitPieces(p())
   p(5) = -5
 END SUB
 
+
 ' === Build Valid Points ===
 SUB BuildValidPoints(p(), v(), isWhite)
   LOCAL i
@@ -697,6 +697,106 @@ SUB BuildReEntryPoints(p(), v(), isWhite, die1, die2)
     ENDIF
   ENDIF
 END SUB
+
+' === Bear-Off Subroutine ===
+SUB bearOff
+  LOCAL i, iFlash, dist, usedDie, highestSpot
+
+  ' ensure all checkers are in home board
+  FOR i = 0 TO 23
+    IF turnIsWhite THEN
+      IF pieces(i) > 0 AND i < 18 THEN GOTO invalidOff
+    ELSE
+      IF pieces(i) < 0 AND i > 5 THEN GOTO invalidOff
+    ENDIF
+  NEXT
+
+  ' must have a checker at cursor
+  IF NOT ((turnIsWhite AND pieces(cursorIndex) > 0) OR (NOT turnIsWhite AND pieces(cursorIndex) < 0)) THEN GOTO invalidOff
+  ' only allow bearing off from home board
+  IF turnIsWhite THEN
+    IF cursorIndex < 18 THEN GOTO invalidOff
+  ELSE
+    IF cursorIndex > 5 THEN GOTO invalidOff
+  ENDIF
+
+  ' compute distance to bear off
+  IF turnIsWhite THEN
+    dist = 24 - cursorIndex
+  ELSE
+    dist = cursorIndex + 1
+  ENDIF
+
+  ' handle doubles
+  IF doubleFlag THEN
+    IF dist = dieVal AND movesLeft > 0 THEN
+      movesLeft = movesLeft - 1
+    ELSE
+      GOTO invalidOff
+    ENDIF
+  ELSE
+    ' exact pip?
+    IF m1 > 0 AND dist = m1 THEN
+      usedDie = 1
+    ELSEIF m2 > 0 AND dist = m2 THEN
+      usedDie = 2
+    ELSE
+      ' no exact pip: must be on highest occupied point
+      highestSpot = -1
+      IF turnIsWhite THEN
+        ' scan from farthest (index 18) to home edge (23)
+        FOR i = 18 TO 23
+          IF pieces(i) > 0 THEN highestSpot = i: EXIT FOR
+        NEXT
+      ELSE
+        ' scan from farthest (5) down to exit (0)
+        FOR i = 5 TO 0 STEP -1
+          IF pieces(i) < 0 THEN highestSpot = i: EXIT FOR
+        NEXT
+      ENDIF
+      IF cursorIndex <> highestSpot THEN GOTO invalidOff
+      ' choose the larger pip that exceeds dist
+      IF m1 > 0 AND m1 > dist THEN
+        usedDie = 1
+      ELSEIF m2 > 0 AND m2 > dist THEN
+        usedDie = 2
+      ELSE
+        GOTO invalidOff
+      ENDIF
+    ENDIF
+    ' consume pip
+    IF usedDie = 1 THEN
+      m1 = 0
+    ELSE
+      m2 = 0
+    ENDIF
+  ENDIF
+
+  ' remove checker
+  IF turnIsWhite THEN
+    pieces(cursorIndex) = pieces(cursorIndex) - 1
+  ELSE
+    pieces(cursorIndex) = pieces(cursorIndex) + 1
+  ENDIF
+
+  ' redraw board
+  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+  BuildValidPoints pieces(), validPoints(), turnIsWhite
+  FOR i = 0 TO 23
+    IF validPoints(i) THEN cursorIndex = i: EXIT FOR
+    ENDIF
+  NEXT
+  DrawCursor cursorIndex, 0
+  RETURN
+
+invalidOff:
+  FOR iFlash = 1 TO 3
+    DrawCursor cursorIndex, 1: PAUSE 100
+    DrawCursor cursorIndex, 0: PAUSE 100
+  NEXT
+END SUB
+
+
 
 
 ' === Helper Functions ===

@@ -38,6 +38,27 @@ blackCursor = 0
 turnIsWhite = 1
 canRoll = 1
 RANDOMIZE TIMER
+' === Opening Roll to Determine First Player ===
+do
+  bd = INT(RND * 6) + 1
+  wd = INT(RND * 6) + 1
+loop while bd = wd
+IF bd > wd THEN
+  turnIsWhite = 0
+  screenFlipped = 1
+  d1 = bd
+  d2 = wd
+ELSE
+  turnIsWhite = 1
+  screenFlipped = 0
+  d1 = wd
+  d2 = bd
+ENDIF
+m1 = d1
+m2 = d2
+DrawDice turnIsWhite
+PAUSE 1000
+canRoll = 0
 
 ' testing variables
 'whiteBar = 2
@@ -777,12 +798,23 @@ SUB bearOff
       m2 = 0
     ENDIF
   ENDIF
-
   ' remove checker
   IF turnIsWhite THEN
     pieces(cursorIndex) = pieces(cursorIndex) - 1
   ELSE
     pieces(cursorIndex) = pieces(cursorIndex) + 1
+  ENDIF
+
+  ' check for victory
+  total = 0
+  FOR j = 0 TO 23
+    IF turnIsWhite AND pieces(j) > 0 THEN total = total + pieces(j)
+    IF NOT turnIsWhite AND pieces(j) < 0 THEN total = total - pieces(j)
+    ENDIF
+  NEXT
+  IF total = 0 THEN
+    gameOver
+    RETURN
   ENDIF
 
   ' redraw board
@@ -798,7 +830,10 @@ invalidOff:
   NEXT
 END SUB
 
-
+SUB gameOver
+  CLS
+  print "YOU WIN"
+END SUB
 
 
 ' === Helper Functions ===

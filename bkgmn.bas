@@ -32,7 +32,10 @@ DIM state          ' 0=not rolled, 1=rolled, 2=no more moves
 DIM hasPicked
 DIM cursorIndex, pickedPoint
 DIM validPoints(23), cursorSeq(23)
+DIM whiteOff, blackOff
 
+whiteOff = 0 
+blackOff = 0
 whiteCursor = 23
 blackCursor = 0
 
@@ -71,6 +74,7 @@ canRoll = 0
 ClearScreen
 DrawBoard
 DrawBearTray
+DrawOffTrayPieces
 InitPieces pieces()
 DrawCenterBar
 DrawCheckers pieces()
@@ -167,16 +171,19 @@ DO
 
 LOOP  ' Main Loop
 
+' === RollDice Subroutine ===
 SUB RollDice
   rolls = INT(RND * 8) + 11
   FOR i = 1 TO rolls
     d1 = INT(RND * 6) + 1
     d2 = INT(RND * 6) + 1
-    DrawDice turnIsWhite
+    DrawDice(turnIsWhite)
     PAUSE 80
   NEXT
-  ' Set up dice values and doubles count
-  m1 = d1: m2 = d2
+  m1 = d1
+  m2 = d2
+  dieVal1 = d1
+  dieVal2 = d2
   IF d1 = d2 THEN
     doubleFlag = 1
     dieVal = d1
@@ -186,7 +193,7 @@ SUB RollDice
     movesLeft = 2
   ENDIF
   canRoll = 0
-end SUB
+END SUB
 
 ' === Navigate Cursor Subroutine ===
 SUB NavigateCursor
@@ -304,7 +311,7 @@ SUB PickDrop
       ENDIF
       hasPicked = 1
       ' Redraw after removal
-      ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+      ClearScreen: DrawBoard: DrawBearTray: DrawOffTrayPieces: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
       ' Build forward-only valid drop targets
       BuildMovePoints pieces(), validPoints(), turnIsWhite, origPick, m1, m2
       ' Draw cursor on picked location
@@ -341,7 +348,7 @@ SUB PickDrop
         pieces(origPick) = pieces(origPick) - 1
       ENDIF
       hasPicked = 0
-      ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+      ClearScreen: DrawBoard: DrawBearTray: DrawOffTrayPieces: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
       DrawCursor cursorIndex, 0
       EXIT SUB
     ENDIF
@@ -404,7 +411,7 @@ SUB PickDrop
     ENDIF
     hasPicked = 0
     ' Redraw after move
-    ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+    ClearScreen: DrawBoard: DrawBearTray: DrawOffTrayPieces: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
     BuildValidPoints pieces(), validPoints(), turnIsWhite    
     if m1 = 0 and m2 = 0 then
       DrawCursor cursorIndex, 1
@@ -559,6 +566,60 @@ SUB DrawBearTray
   LINE trayX, 0, trayX, H, TRAY_W, trayColor
 END SUB
 
+' === Draw the borne off pieces inside that same tray ===
+SUB DrawOffTrayPieces
+  LOCAL trayX, pieceH, i, rectX, rectY, fillCol, count
+
+  ' 1) Position tray edge (orientation only)
+  IF screenFlipped THEN
+    trayX = W - (X_OFFSET + 12 * POINT_W + BAR_W + TRAY_W)
+  ELSE
+    trayX = X_OFFSET + 12 * POINT_W + BAR_W
+  ENDIF
+
+  ' 2) Compute piece height to fit 15 in half-board
+  pieceH = INT((H/2) / 15)
+
+  ' 3) Draw both players borne off stacks inside the flipped tray
+  IF NOT screenFlipped THEN
+    ' White turn (tray on right)
+    '    White stack bottom up
+    count = whiteOff: fillCol = RGB(240,240,220)
+    FOR i = 1 TO count
+      rectX = trayX + 1
+      rectY = H - i * pieceH
+      RBOX rectX, rectY, TRAY_W - 2, pieceH, 0, , fillCol
+    NEXT
+    
+    '    Black stack top down
+    count = blackOff: fillCol = RGB(100,60,20)
+    FOR i = 1 TO count
+      rectX = trayX + 1
+      rectY = (i - 1) * pieceH
+      RBOX rectX, rectY, TRAY_W - 2, pieceH, 0, , fillCol
+    NEXT
+  ELSE
+    ' Black turn (tray on left)
+    '    White stack top down
+    count = whiteOff: fillCol = RGB(240,240,220)
+    FOR i = 1 TO count
+      rectX = trayX + 1
+      rectY = (i - 1) * pieceH
+      RBOX rectX, rectY, TRAY_W - 2, pieceH, 0, , fillCol
+    NEXT
+    
+    '    Black stack bottom up
+    count = blackOff: fillCol = RGB(100,60,20)
+    FOR i = 1 TO count
+      rectX = trayX + 1
+      rectY = H - i * pieceH
+      RBOX rectX, rectY, TRAY_W - 2, pieceH, 0, , fillCol
+    NEXT
+  ENDIF
+END SUB
+
+
+
 ' === Draw Center Bar Subroutine ===
 SUB DrawCenterBar
   LOCAL rawX, xLine, circleX, j, cy, border, fill, centerY, offsetY
@@ -592,6 +653,27 @@ SUB DrawCenterBar
   NEXT
 END SUB
 
+SUB InitPiecesTESTING(p()) ' rename for debugging
+  ' Clear the board
+  FOR i = 0 TO 23: p(i) = 0: NEXT
+
+  ' White
+  p(18) = 3
+  p(19) = 2
+  p(20) = 2
+  p(21) = 2
+  p(22) = 2
+  p(23) = 3
+
+
+  ' Black: 
+  p(1)  = -3
+  p(2)  = -3
+  p(3)  = -3
+  p(4)  = -3
+  p(5)  = -3
+END SUB
+
 SUB InitPieces(p())
   ' Clear all points
   FOR i = 0 TO 23: p(i) = 0: NEXT
@@ -613,7 +695,6 @@ SUB InitPieces(p())
   ' Five black on space 19  index 5
   p(5) = -5
 END SUB
-
 
 ' === Build Valid Points ===
 SUB BuildValidPoints(p(), v(), isWhite)
@@ -675,6 +756,7 @@ SUB EndTurn
   ClearScreen
   DrawBoard
   DrawBearTray
+  DrawOffTrayPieces
   DrawCheckers pieces()
   DrawCenterBar
   DrawDice turnIsWhite
@@ -751,7 +833,7 @@ SUB BarOff
   hasPicked = 0
   DrawCursor cursorIndex, 1
   ' Redraw board
-  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+  ClearScreen: DrawBoard: DrawBearTray: DrawOffTrayPieces: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
 END SUB
 
 ' === Build Re-Entry Points ===
@@ -786,141 +868,134 @@ END SUB
 
 ' === Bear-Off Subroutine ===
 SUB bearOff
-  LOCAL i, dist, usedDie, highestSpot, anyFarther, iFlash
+  LOCAL i, j, dist, usedDie, highestSpot, legalMoveExists, iFlash
 
-  ' 1) Make sure all your checkers are in the home board 
+  ' 1) Ensure all checkers in home
   FOR i = 0 TO 23
     IF turnIsWhite THEN
-      IF pieces(i) > 0 AND i < 18 THEN GOTO invalidOff
+      IF pieces(i) > 0 AND i < 18 THEN
+        GOTO invalidOff
+      ENDIF
     ELSE
-      IF pieces(i) < 0 AND i > 5 THEN GOTO invalidOff
+      IF pieces(i) < 0 AND i > 5 THEN
+        GOTO invalidOff
+      ENDIF
     ENDIF
   NEXT
 
-  ' 2) Must have a checker at the cursor 
+  ' 2) Must have checker at cursor
   IF (turnIsWhite AND pieces(cursorIndex) <= 0) OR (NOT turnIsWhite AND pieces(cursorIndex) >= 0) THEN
     GOTO invalidOff
   ENDIF
 
-  ' 3) Only allow from home board 
-  IF turnIsWhite AND cursorIndex < 18 THEN GOTO invalidOff
-  IF NOT turnIsWhite AND cursorIndex > 5 THEN GOTO invalidOff
+  ' 3) Only from home
+  IF turnIsWhite AND cursorIndex < 18 THEN
+    GOTO invalidOff
+  ENDIF
+  IF NOT turnIsWhite AND cursorIndex > 5 THEN
+    GOTO invalidOff
+  ENDIF
 
-  ' 4) Compute pip distance 
+  ' 4) Compute pip distance
   IF turnIsWhite THEN
     dist = 24 - cursorIndex
   ELSE
     dist = cursorIndex + 1
   ENDIF
 
-  ' 5) Find the highest-point checker in home 
+  ' 5) Find farthest checker (highestSpot)
   highestSpot = -1
   IF turnIsWhite THEN
     FOR i = 18 TO 23
-      IF pieces(i) > 0 THEN highestSpot = i: EXIT FOR
+      IF pieces(i) > 0 THEN
+        highestSpot = i
+        EXIT FOR
+      ENDIF
     NEXT
   ELSE
     FOR i = 5 TO 0 STEP -1
-      IF pieces(i) < 0 THEN highestSpot = i: EXIT FOR
-    NEXT
-  ENDIF
-
-  ' 6) Check for any checkers farther than the pip 
-  anyFarther = 0
-  IF doubleFlag THEN
-    ' farther than the die value
-    FOR i = 0 TO 23
-      IF turnIsWhite THEN
-        IF pieces(i) > 0 AND (24 - i) > dieVal THEN
-          anyFarther = 1
-          EXIT FOR
-        endif
-      ELSE
-        IF pieces(i) < 0 AND (i + 1) > dieVal THEN 
-          anyFarther = 1
-          EXIT FOR
-        endif
-      ENDIF
-    NEXT
-  ELSE
-    ' farther than *either* pip
-    FOR i = 0 TO 23
-      IF turnIsWhite THEN
-        IF pieces(i) > 0 AND ((m1 > 0 AND (24 - i) > m1) OR  (m2 > 0 AND (24 - i) > m2)) THEN 
-          anyFarther = 1
-          EXIT FOR
-        endif
-      ELSE
-        IF pieces(i) < 0 AND ((m1 > 0 AND (i + 1) > m1) OR  (m2 > 0 AND (i + 1) > m2)) THEN 
-          anyFarther = 1
-          EXIT FOR
-        endif
+      IF pieces(i) < 0 THEN
+        highestSpot = i
+        EXIT FOR
       ENDIF
     NEXT
   ENDIF
 
-  ' 7) Now decide legality and consume a pip 
-  IF doubleFlag THEN
-
-    IF movesLeft = 0 THEN GOTO invalidOff
-
-    IF dist = dieVal THEN
-      ' exact
-      movesLeft = movesLeft - 1
-
-    ELSEIF anyFarther = 1 THEN
-      ' must hit the farther one
-      GOTO invalidOff
-
-    ELSEIF cursorIndex = highestSpot THEN
-      ' highest available
-      movesLeft = movesLeft - 1
-
-    ELSE
-      GOTO invalidOff
-    ENDIF
-
+  ' 6) Exact pip match
+  IF m1 > 0 AND dist = m1 THEN
+    usedDie = 1
+  ELSEIF m2 > 0 AND dist = m2 THEN
+    usedDie = 2
   ELSE
-    ' non-doubles: try to match either m1 or m2 first
-    IF m1 > 0 AND dist = m1 THEN
-      usedDie = 1
-    ELSEIF m2 > 0 AND dist = m2 THEN
-      usedDie = 2
-    ' no exact pip  highest rule
-    ELSEIF anyFarther = 0 AND cursorIndex = highestSpot THEN
-      ' pick the larger pip to consume
-      IF m1 > 0 AND m1 > dist THEN usedDie = 1
-      ELSEIF m2 > 0 AND m2 > dist THEN usedDie = 2
-      ELSE GOTO invalidOff
+    ' No exact: try highest-roll for each remaining pip
+    ' a) Try m1
+    IF m1 > 0 AND dist < m1 THEN
+      legalMoveExists = 0
+      FOR i = 0 TO 23
+        IF (turnIsWhite AND pieces(i) > 0) OR (NOT turnIsWhite AND pieces(i) < 0) THEN
+          BuildMovePoints(pieces(), validPoints(), turnIsWhite, i, m1, 0)
+          FOR j = 0 TO 23
+            IF validPoints(j) = 1 THEN
+              legalMoveExists = 1
+              EXIT FOR
+            ENDIF
+          NEXT
+          IF legalMoveExists THEN EXIT FOR
+        ENDIF
+      NEXT
+      IF legalMoveExists = 0 AND cursorIndex = highestSpot THEN
+        usedDie = 1
+      ELSE
+        GOTO invalidOff
+      ENDIF
+
+    ' b) Try m2
+    ELSEIF m2 > 0 AND dist < m2 THEN
+      legalMoveExists = 0
+      FOR i = 0 TO 23
+        IF (turnIsWhite AND pieces(i) > 0) OR (NOT turnIsWhite AND pieces(i) < 0) THEN
+          BuildMovePoints(pieces(), validPoints(), turnIsWhite, i, m2, 0)
+          FOR j = 0 TO 23
+            IF validPoints(j) = 1 THEN
+              legalMoveExists = 1
+              EXIT FOR
+            ENDIF
+          NEXT
+          IF legalMoveExists THEN EXIT FOR
+        ENDIF
+      NEXT
+      IF legalMoveExists = 0 AND cursorIndex = highestSpot THEN
+        usedDie = 2
+      ELSE
+        GOTO invalidOff
       ENDIF
     ELSE
       GOTO invalidOff
     ENDIF
-
-    ' finally consume it
-    IF usedDie = 1 THEN m1 = 0 ELSE m2 = 0
   ENDIF
 
-  ' 8) Remove the checker
+  ' 7) Consume pip or move counter
+  IF doubleFlag THEN
+    movesLeft = movesLeft - 1
+  ELSE
+    IF usedDie = 1 THEN
+      m1 = 0
+    ELSE
+      m2 = 0
+    ENDIF
+  ENDIF
+
+  ' 8) Remove checker
   IF turnIsWhite THEN
     pieces(cursorIndex) = pieces(cursorIndex) - 1
+    whiteOff = whiteOff + 1
   ELSE
     pieces(cursorIndex) = pieces(cursorIndex) + 1
+    blackOff = blackOff + 1
   ENDIF
 
-  ' 9) Check for game over
-  total = 0
-  FOR i = 0 TO 23
-    IF turnIsWhite AND pieces(i) > 0 THEN total = total + pieces(i)
-    IF NOT turnIsWhite AND pieces(i) < 0 THEN total = total - pieces(i)
-  NEXT
-  IF total = 0 THEN 
-    gameOver
-    RETURN
-  ENDIF
-
-  '10) Redraw & rebuild moves
-  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+  ' 9) Redraw and rebuild
+  ClearScreen: DrawBoard: DrawBearTray: DrawOffTrayPieces: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   RETURN
 
@@ -930,6 +1005,7 @@ invalidOff:
     DrawCursor cursorIndex, 1: PAUSE 100
     DrawCursor cursorIndex, 0: PAUSE 100
   NEXT
+
 END SUB
 
 SUB gameOver

@@ -89,7 +89,10 @@ LOOP
 ' === Main Loop ===
 DO
   k$ = INKEY$
-
+  
+  if (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
+    hasPicked = 1
+  endif
   IF (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
     DrawCursor cursorIndex, 1
   ELSE 
@@ -140,11 +143,11 @@ DO
         ENDIF
       ENDIF
 
-    CASE "C", "c"
-      IF state <> 0 THEN DoOver
+'    CASE "C", "c"  --- maybe another day
+'      IF state <> 0 THEN DoOver
     
     CASE "B", "b"
-    ' Only valid if youve rolled and have pieces on the bar
+    ' Only valid if youve rolled 
     IF canRoll = 0 THEN
       bearOff
     ENDIF
@@ -412,16 +415,16 @@ SUB PickDrop
 END SUB
 
 
-
-SUB DoOver
-  FOR i = 0 TO 23: pieces(i) = backupPieces(i): NEXT
-  m1 = backupM1: m2 = backupM2: whiteBar = backupWhiteBar: blackBar = backupBlackBar
-  canRoll = 0: state = 1: hasPicked = 0
-  BuildValidPoints pieces(), validPoints(), turnIsWhite
-  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
-  FOR i = 0 TO 23: cursorIndex = i: EXIT FOR IF validPoints(i): NEXT
-  DrawCursor cursorIndex, 0
-END SUB
+' I am not sure this is really needed now - maybe another day
+'SUB DoOver
+'  FOR i = 0 TO 23: pieces(i) = backupPieces(i): NEXT
+'  m1 = backupM1: m2 = backupM2: whiteBar = backupWhiteBar: blackBar = backupBlackBar
+'  canRoll = 0: state = 1: hasPicked = 0
+'  BuildValidPoints pieces(), validPoints(), turnIsWhite
+'  ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
+'  FOR i = 0 TO 23: cursorIndex = i: EXIT FOR IF validPoints(i): NEXT
+'  DrawCursor cursorIndex, 0
+'END SUB
 
 ' === Clear Screen ===
 SUB ClearScreen 

@@ -90,7 +90,7 @@ LOOP
 DO
   k$ = INKEY$
 
-  if m1 = 0 and m2 = 0 then
+  IF (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
     DrawCursor cursorIndex, 1
   ELSE 
     DrawCursor cursorIndex, 0
@@ -783,9 +783,9 @@ END SUB
 
 ' === Bear-Off Subroutine ===
 SUB bearOff
-  LOCAL i, iFlash, dist, usedDie, highestSpot
+  LOCAL i, dist, usedDie, highestSpot, anyFarther, iFlash
 
-  ' ensure all checkers are in home board
+  '- 1) Make sure all your checkers are in the home board -
   FOR i = 0 TO 23
     IF turnIsWhite THEN
       IF pieces(i) > 0 AND i < 18 THEN GOTO invalidOff
@@ -794,92 +794,135 @@ SUB bearOff
     ENDIF
   NEXT
 
-  ' must have a checker at cursor
-  IF NOT ((turnIsWhite AND pieces(cursorIndex) > 0) OR (NOT turnIsWhite AND pieces(cursorIndex) < 0)) THEN GOTO invalidOff
-  ' only allow bearing off from home board
-  IF turnIsWhite THEN
-    IF cursorIndex < 18 THEN GOTO invalidOff
-  ELSE
-    IF cursorIndex > 5 THEN GOTO invalidOff
+  '- 2) Must have a checker at the cursor -
+  IF (turnIsWhite AND pieces(cursorIndex) <= 0) OR (NOT turnIsWhite AND pieces(cursorIndex) >= 0) THEN
+    GOTO invalidOff
   ENDIF
 
-  ' compute distance to bear off
+  '- 3) Only allow from home board -
+  IF turnIsWhite AND cursorIndex < 18 THEN GOTO invalidOff
+  IF NOT turnIsWhite AND cursorIndex > 5 THEN GOTO invalidOff
+
+  '- 4) Compute pip distance -
   IF turnIsWhite THEN
     dist = 24 - cursorIndex
   ELSE
     dist = cursorIndex + 1
   ENDIF
 
-  ' handle doubles
+  '- 5) Find the highest-point checker in home -
+  highestSpot = -1
+  IF turnIsWhite THEN
+    FOR i = 18 TO 23
+      IF pieces(i) > 0 THEN highestSpot = i: EXIT FOR
+    NEXT
+  ELSE
+    FOR i = 5 TO 0 STEP -1
+      IF pieces(i) < 0 THEN highestSpot = i: EXIT FOR
+    NEXT
+  ENDIF
+
+  '- 6) Check for any checkers farther than the pip -
+  anyFarther = 0
   IF doubleFlag THEN
-    IF dist = dieVal AND movesLeft > 0 THEN
+    ' farther than the die value
+    FOR i = 0 TO 23
+      IF turnIsWhite THEN
+        IF pieces(i) > 0 AND (24 - i) > dieVal THEN
+          anyFarther = 1
+          EXIT FOR
+        endif
+      ELSE
+        IF pieces(i) < 0 AND (i + 1) > dieVal THEN 
+          anyFarther = 1
+          EXIT FOR
+        endif
+      ENDIF
+    NEXT
+  ELSE
+    ' farther than *either* pip
+    FOR i = 0 TO 23
+      IF turnIsWhite THEN
+        IF pieces(i) > 0 AND ((m1 > 0 AND (24 - i) > m1) OR  (m2 > 0 AND (24 - i) > m2)) THEN 
+          anyFarther = 1
+          EXIT FOR
+        endif
+      ELSE
+        IF pieces(i) < 0 AND ((m1 > 0 AND (i + 1) > m1) OR  (m2 > 0 AND (i + 1) > m2)) THEN 
+          anyFarther = 1
+          EXIT FOR
+        endif
+      ENDIF
+    NEXT
+  ENDIF
+
+  '- 7) Now decide legality and consume a pip -
+  IF doubleFlag THEN
+
+    IF movesLeft = 0 THEN GOTO invalidOff
+
+    IF dist = dieVal THEN
+      ' exact
       movesLeft = movesLeft - 1
+
+    ELSEIF anyFarther = 1 THEN
+      ' must hit the farther one
+      GOTO invalidOff
+
+    ELSEIF cursorIndex = highestSpot THEN
+      ' highest available
+      movesLeft = movesLeft - 1
+
     ELSE
       GOTO invalidOff
     ENDIF
+
   ELSE
-    ' exact pip?
+    ' non-doubles: try to match either m1 or m2 first
     IF m1 > 0 AND dist = m1 THEN
       usedDie = 1
     ELSEIF m2 > 0 AND dist = m2 THEN
       usedDie = 2
-    ELSE
-      ' no exact pip: must be on highest occupied point
-      highestSpot = -1
-      IF turnIsWhite THEN
-        ' scan from farthest (index 18) to home edge (23)
-        FOR i = 18 TO 23
-          IF pieces(i) > 0 THEN highestSpot = i: EXIT FOR
-        NEXT
-      ELSE
-        ' scan from farthest (5) down to exit (0)
-        FOR i = 5 TO 0 STEP -1
-          IF pieces(i) < 0 THEN highestSpot = i: EXIT FOR
-        NEXT
+    ' no exact pip ? highest rule
+    ELSEIF anyFarther = 0 AND cursorIndex = highestSpot THEN
+      ' pick the larger pip to consume
+      IF m1 > 0 AND m1 > dist THEN usedDie = 1
+      ELSEIF m2 > 0 AND m2 > dist THEN usedDie = 2
+      ELSE GOTO invalidOff
       ENDIF
-      IF cursorIndex <> highestSpot THEN GOTO invalidOff
-      ' choose the larger pip that exceeds dist
-      IF m1 > 0 AND m1 > dist THEN
-        usedDie = 1
-      ELSEIF m2 > 0 AND m2 > dist THEN
-        usedDie = 2
-      ELSE
-        GOTO invalidOff
-      ENDIF
-    ENDIF
-    ' consume pip
-    IF usedDie = 1 THEN
-      m1 = 0
     ELSE
-      m2 = 0
+      GOTO invalidOff
     ENDIF
+
+    ' finally consume it
+    IF usedDie = 1 THEN m1 = 0 ELSE m2 = 0
   ENDIF
-  ' remove checker
+
+  '- 8) Remove the checker -
   IF turnIsWhite THEN
     pieces(cursorIndex) = pieces(cursorIndex) - 1
   ELSE
     pieces(cursorIndex) = pieces(cursorIndex) + 1
   ENDIF
 
-  ' check for victory
+  '- 9) Check for game over -
   total = 0
-  FOR j = 0 TO 23
-    IF turnIsWhite AND pieces(j) > 0 THEN total = total + pieces(j)
-    IF NOT turnIsWhite AND pieces(j) < 0 THEN total = total - pieces(j)
-    ENDIF
+  FOR i = 0 TO 23
+    IF turnIsWhite AND pieces(i) > 0 THEN total = total + pieces(i)
+    IF NOT turnIsWhite AND pieces(i) < 0 THEN total = total - pieces(i)
   NEXT
-  IF total = 0 THEN
+  IF total = 0 THEN 
     gameOver
     RETURN
   ENDIF
 
-  ' redraw board
+  '- 10) Redraw & rebuild moves -
   ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
   BuildValidPoints pieces(), validPoints(), turnIsWhite
-  'DrawCursor cursorIndex, 0
   RETURN
 
 invalidOff:
+  ' flash cursor and exit without touching movesLeft/m1/m2
   FOR iFlash = 1 TO 3
     DrawCursor cursorIndex, 1: PAUSE 100
     DrawCursor cursorIndex, 0: PAUSE 100

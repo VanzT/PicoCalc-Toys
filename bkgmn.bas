@@ -114,7 +114,7 @@ DO
 
     CASE "T", "t"
       IF canRoll = 0 THEN
-        ' — are there any checkers on the bar? —
+        ' are there any checkers on the bar? 
         IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
           ' build bar-reentry map
           BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
@@ -126,18 +126,18 @@ DO
               EXIT FOR
             ENDIF
           NEXT
-          ' if no re-entry OR (double rolls but no movesLeft) → end turn
+          ' if no re-entry OR (double rolls but no movesLeft)  end turn
           IF legalExists = 0 OR (doubleFlag AND movesLeft = 0) THEN
             EndTurn
           ENDIF
         ELSE
-          ' — no bar: only end when all pips are gone —
+          '  no bar: only end when all pips are gone 
           IF (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
             EndTurn
           ENDIF
         ENDIF
       ENDIF
-        ' — otherwise (no bar), only end once all dice are consumed
+        '  otherwise (no bar), only end once all dice are consumed
         ELSEIF m1 = 0 AND m2 = 0 THEN
           EndTurn
         ENDIF
@@ -317,7 +317,7 @@ SUB PickDrop
     ENDIF
   ELSE
     ' Drop-off phase
-    ' — DISALLOW landing on a point with 2+ opponent checkers —
+    '  DISALLOW landing on a point with 2+ opponent checkers 
     IF turnIsWhite AND pieces(cursorIndex) < -1 THEN
       FOR iFlash = 1 TO 3
         DrawCursor cursorIndex, 1: PAUSE 100
@@ -596,21 +596,21 @@ SUB InitPieces(p())
   ' Clear all points
   FOR i = 0 TO 23: p(i) = 0: NEXT
   ' Place starting checkers:
-  ' Two white on space 24 (upper-right) → index 0
+  ' Two white on space 24 (upper-right)  index 0
   p(0) = 2
-  ' Five white on space 13 → index 11
+  ' Five white on space 13  index 11
   p(11) = 5
-  ' Three white on space 8 → index 16
+  ' Three white on space 8  index 16
   p(16) = 3
-  ' Five white on space 6 → index 18
+  ' Five white on space 6  index 18
   p(18) = 5
-  ' Two black on space 1 (lower-right) → index 23
+  ' Two black on space 1 (lower-right)  index 23
   p(23) = -2
-  ' Five black on space 12 → index 12
+  ' Five black on space 12  index 12
   p(12) = -5
-  ' Three black on space 17 → index 7
+  ' Three black on space 17  index 7
   p(7) = -3
-  ' Five black on space 19 → index 5
+  ' Five black on space 19  index 5
   p(5) = -5
 END SUB
 
@@ -788,7 +788,7 @@ END SUB
 SUB bearOff
   LOCAL i, dist, usedDie, highestSpot, anyFarther, iFlash
 
-  '─ 1) Make sure all your checkers are in the home board ─
+  ' 1) Make sure all your checkers are in the home board 
   FOR i = 0 TO 23
     IF turnIsWhite THEN
       IF pieces(i) > 0 AND i < 18 THEN GOTO invalidOff
@@ -797,23 +797,23 @@ SUB bearOff
     ENDIF
   NEXT
 
-  '─ 2) Must have a checker at the cursor ─
+  ' 2) Must have a checker at the cursor 
   IF (turnIsWhite AND pieces(cursorIndex) <= 0) OR (NOT turnIsWhite AND pieces(cursorIndex) >= 0) THEN
     GOTO invalidOff
   ENDIF
 
-  '─ 3) Only allow from home board ─
+  ' 3) Only allow from home board 
   IF turnIsWhite AND cursorIndex < 18 THEN GOTO invalidOff
   IF NOT turnIsWhite AND cursorIndex > 5 THEN GOTO invalidOff
 
-  '─ 4) Compute pip distance ─
+  ' 4) Compute pip distance 
   IF turnIsWhite THEN
     dist = 24 - cursorIndex
   ELSE
     dist = cursorIndex + 1
   ENDIF
 
-  '─ 5) Find the highest-point checker in home ─
+  ' 5) Find the highest-point checker in home 
   highestSpot = -1
   IF turnIsWhite THEN
     FOR i = 18 TO 23
@@ -825,7 +825,7 @@ SUB bearOff
     NEXT
   ENDIF
 
-  '─ 6) Check for any checkers farther than the pip ─
+  ' 6) Check for any checkers farther than the pip 
   anyFarther = 0
   IF doubleFlag THEN
     ' farther than the die value
@@ -859,7 +859,7 @@ SUB bearOff
     NEXT
   ENDIF
 
-  '─ 7) Now decide legality and consume a pip ─
+  ' 7) Now decide legality and consume a pip 
   IF doubleFlag THEN
 
     IF movesLeft = 0 THEN GOTO invalidOff
@@ -886,7 +886,7 @@ SUB bearOff
       usedDie = 1
     ELSEIF m2 > 0 AND dist = m2 THEN
       usedDie = 2
-    ' no exact pip → highest rule
+    ' no exact pip  highest rule
     ELSEIF anyFarther = 0 AND cursorIndex = highestSpot THEN
       ' pick the larger pip to consume
       IF m1 > 0 AND m1 > dist THEN usedDie = 1
@@ -901,14 +901,14 @@ SUB bearOff
     IF usedDie = 1 THEN m1 = 0 ELSE m2 = 0
   ENDIF
 
-  '─ 8) Remove the checker ─
+  ' 8) Remove the checker
   IF turnIsWhite THEN
     pieces(cursorIndex) = pieces(cursorIndex) - 1
   ELSE
     pieces(cursorIndex) = pieces(cursorIndex) + 1
   ENDIF
 
-  '─ 9) Check for game over ─
+  ' 9) Check for game over
   total = 0
   FOR i = 0 TO 23
     IF turnIsWhite AND pieces(i) > 0 THEN total = total + pieces(i)
@@ -919,7 +919,7 @@ SUB bearOff
     RETURN
   ENDIF
 
-  '─ 10) Redraw & rebuild moves ─
+  '10) Redraw & rebuild moves
   ClearScreen: DrawBoard: DrawBearTray: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   RETURN

@@ -1,0 +1,16 @@
+Space bar = roll dice
+Up/Down/Left/Right = navigate cursor/piece around the board
+Enter = pick up or drop off a piece
+t = end turn
+b = bear off a piece
+
+Notes:
+- cursor is red when not holiding a piece
+- cursor turns green when a piece has been picked up
+- you may drop a piece back from where it was picked up without penalty
+- if you start your turn with 1 or more pieces on the bar, the cursor turns green indicating
+that you have picked up a piece from the bar.  Place it in a legal space to re-enter that piece
+- if you cannot bar off a piece, you must press t to end your turn
+- cursor blinks 3 times if you attempt an invalid move
+- to bear off, move the cursor to the space where you want to bear off and press b.  Otherwise,
+press enter as normal to pick it up and move it.  You cannot bear off a piece by pressing enter. Only b

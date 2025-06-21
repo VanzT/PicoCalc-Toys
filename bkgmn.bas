@@ -116,36 +116,40 @@ DO
         Endif 
       endif 
 
-    CASE "T", "t"
-      IF canRoll = 0 THEN
-        ' are there any checkers on the bar? 
-        IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
-          ' build bar-reentry map
-          BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
-          ' scan for any legal re-entry
-          legalExists = 0
-          FOR i = 0 TO 23
-            IF validPoints(i) = 1 THEN
-              legalExists = 1
-              EXIT FOR
+CASE "T","t"
+  IF canRoll = 0 THEN
+    legalExists = 0
+
+    ' 1) If you have checkers on the bar, test re-entry only
+    IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
+      BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
+      FOR i = 0 TO 23
+        IF validPoints(i) = 1 THEN
+          legalExists = 1: EXIT FOR
+        ENDIF
+      NEXT
+
+    ' 2) Otherwise, for each point you own, test movement with each die
+    ELSE
+      FOR src = 0 TO 23
+        IF (turnIsWhite AND pieces(src) > 0) OR (NOT turnIsWhite AND pieces(src) < 0) THEN
+          BuildMovePoints pieces(), validPoints(), turnIsWhite, src, m1, m2
+          FOR dst = 0 TO 23
+            IF validPoints(dst) = 1 THEN
+              legalExists = 1: EXIT FOR
             ENDIF
           NEXT
-          ' if no re-entry OR (double rolls but no movesLeft)  end turn
-          IF legalExists = 0 OR (doubleFlag AND movesLeft = 0) THEN
-            EndTurn
-          ENDIF
-        ELSE
-          '  no bar: only end when all pips are gone 
-          IF (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
-            EndTurn
-          ENDIF
+          IF legalExists THEN EXIT FOR
         ENDIF
-      ENDIF
-        '  otherwise (no bar), only end once all dice are consumed
-        ELSEIF m1 = 0 AND m2 = 0 THEN
-          EndTurn
-        ENDIF
-      ENDIF
+      NEXT
+    ENDIF
+
+    ' 3) If no legal moves, or you have already consumed all pips, end the turn
+    IF legalExists = 0 OR (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
+      EndTurn
+    ENDIF
+  ENDIF
+
 
 '    CASE "C", "c"  --- maybe another day
 '      IF state <> 0 THEN DoOver
@@ -269,9 +273,11 @@ END SUB
 ' === BuildMovePoints Subroutine ===
 SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
   LOCAL i, dist
+
   FOR i = 0 TO 23
     v(i) = 0
     dist = ABS(i - origPick)
+
     IF doubleFlag THEN
       ' doubles allow any matching dieVal forward
       IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) AND dist = dieVal THEN
@@ -284,7 +290,17 @@ SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
         IF die2 > 0 AND dist = die2 THEN v(i) = 1
       ENDIF
     ENDIF
+
+    ' reject moves onto two or more opponent checkers 
+    IF v(i) = 1 THEN
+      IF isWhite THEN
+        IF p(i) < -1 THEN v(i) = 0
+      ELSE
+        IF p(i) >  1 THEN v(i) = 0
+      ENDIF
+    ENDIF
   NEXT
+
 END SUB
 
 

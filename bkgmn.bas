@@ -164,7 +164,7 @@ CASE "T","t"
       ' Navigate only if moves remain
       IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN NavigateCursor  
 
-    CASE CHR$(13)
+    CASE CHR$(13), CHR$(10)
       IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
         barOff
       Elseif canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN 

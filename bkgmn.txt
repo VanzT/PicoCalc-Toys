@@ -1,14 +1,10 @@
 Space bar = roll dice
 Up/Down/Left/Right = navigate cursor/piece around the board
-Enter = pick up or drop off a piece *(See note below)
+Enter = pick up or drop off a piece 
 t = end turn
 b = bear off a piece
 
 Notes:
-- * this program assumes (likely, incorrectly) that you have installed PicoMite V6.00.02RC22_a or later.
-This means that the Enter key will not work unless you have this version of PicoMite OR you can simply change the line 
-in the main loop that shows "CASE CHR$(13)" to "CASE CHR$(10)" 
-See: https://github.com/madcock/PicoMiteAllVersions/releases/tag/V6.00.02RC22_a for details on why.
 - cursor is red when not holiding a piece
 - cursor turns green when a piece has been picked up
 - you may drop a piece back from where it was picked up without penalty

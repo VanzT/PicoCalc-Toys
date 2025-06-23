@@ -704,36 +704,65 @@ END SUB
 
 ' === Draw Checkers Subroutine ===
 SUB DrawCheckers(p())
-  LOCAL i, j, num, col, row, xx, yy, border, fill
+  LOCAL i, j, num, col, row, colVis, xx, yy
+  LOCAL border, fill
+  LOCAL normalSpacing, skewAmt, extraIdx, baseIdx, baseY
+
+  normalSpacing = PIECE_R * 2 + 2   ' distance between the first 5 pieces
+  skewAmt       = 4                 ' pixels to shift extras toward center
+
   FOR i = 0 TO 23
     num = ABS(p(i))
-    IF p(i) = 0 THEN GOTO SkipDraw
-    IF p(i) > 0 THEN
+    IF num = 0 THEN GOTO SkipDraw
+
+    ' choose colors
+    IF p(i) > 0 THEN ' white pieces
       border = RGB(0,0,0)
       fill   = RGB(240,240,220)
     ELSE
-      border = RGB(0,60,20)
+      border = RGB(0,0,20) ' brown pieces RGB(0,60,20)
       fill   = RGB(100,60,20)
     ENDIF
-    row = i \ 12
+
+    row = i \ 12        ' 0 = top, 1 = bottom
     col = i MOD 12
-    xx = X_OFFSET + col * POINT_W + (col \ 6) * BAR_W + POINT_W / 2
-    IF row = 0 THEN
-      col = 11 - col
-      xx = X_OFFSET + col * POINT_W + (col \ 6) * BAR_W + POINT_W / 2
-      FOR j = 0 TO num - 1
-        yy = PIECE_R + 2 + j * (PIECE_R * 2 + 2)
-        CIRCLE FX(xx), FY(yy), PIECE_R, 1, , border, fill
-      NEXT
+    IF row = 0 THEN    ' flip top row
+      colVis = 11 - col
     ELSE
-      FOR j = 0 TO num - 1
-        yy = H - PIECE_R - 2 - j * (PIECE_R * 2 + 2)
-        CIRCLE FX(xx), FY(yy), PIECE_R, 1, , border, fill
-      NEXT
+      colVis = col
     ENDIF
+
+    xx = X_OFFSET + colVis * POINT_W + (colVis \ 6) * BAR_W + POINT_W / 2
+
+    FOR j = 0 TO num - 1
+      IF j < 5 THEN
+        ' first five in a tight stack
+        IF row = 0 THEN
+          yy = PIECE_R + 2 + j * normalSpacing
+        ELSE
+          yy = H - PIECE_R - 2 - j * normalSpacing
+        ENDIF
+
+      ELSE
+        ' extras: map 6th?1st, 7th?2nd, etc.
+        baseIdx = (j - 5) MOD 5
+        IF row = 0 THEN
+          baseY = PIECE_R + 2 + baseIdx * normalSpacing
+          yy    = baseY + skewAmt      ' skew toward center (downwards)
+        ELSE
+          baseY = H - PIECE_R - 2 - baseIdx * normalSpacing
+          yy    = baseY - skewAmt      ' skew toward center (upwards)
+        ENDIF
+      ENDIF
+
+      CIRCLE FX(xx), FY(yy), PIECE_R, 1, , border, fill
+    NEXT j
+
 SkipDraw:
-  NEXT
+  NEXT i
 END SUB
+
+
 
 ' === End Turn Subroutine ===
 SUB EndTurn

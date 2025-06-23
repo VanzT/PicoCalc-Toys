@@ -21,6 +21,6 @@ muthur.bas - very lame Alien-ish animation.  Terrible, is a kind description
 
 nostromo.bas - farily proud of this one.  Another Alien inspired animation
 
-rgb.bas - I put an 8 RGB LED strip inside my pico and this makes neat effect.
+rgb.bas - I put an 8 RGB LED strip inside my pico and this makes neat effects.
 Totally stolen from https://steinlaus.de/rgb-led-stick-fuer-den-picocalc/ and 
 they deserve all credit.

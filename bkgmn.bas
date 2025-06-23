@@ -924,7 +924,7 @@ SUB bearOff
   ELSEIF m2 > 0 AND dist = m2 THEN
     usedDie = 2
   ELSE
-    ' No exact: try highest-roll for each remaining pip
+    ' No exact: try highest roll for each remaining pip
     ' a) Try m1
     IF m1 > 0 AND dist < m1 THEN
       legalMoveExists = 0
@@ -994,6 +994,13 @@ SUB bearOff
   ' 9) Redraw and rebuild
   ClearScreen: DrawBoard: DrawBearTray: DrawOffTrayPieces: DrawCheckers pieces(): DrawCenterBar: DrawDice turnIsWhite
   BuildValidPoints pieces(), validPoints(), turnIsWhite
+  
+  ' 10) check for victory
+  IF whiteOff = 15 OR blackOff = 15 THEN
+    gameOver
+    END
+  ENDIF
+  
   RETURN
 
 invalidOff:
@@ -1017,15 +1024,17 @@ SUB DoOpeningRoll
   LOCAL brownFill, whiteFill
   LOCAL winX, winY, winFill, pipCol, b
 
-  size      = 48
-  corner    = 6
+  ' 1) Set dice size to twice the previous (96×96) and compute positions
+  size      = 96
+  corner    = size \ 8            ' 12-pixel rounded corners
   y         = (H - size) \ 2
   xB        = (W \ 4) - (size \ 2)
   xW        = (3 * W \ 4) - (size \ 2)
+
   brownFill = RGB(100,60,20)
   whiteFill = RGB(240,240,220)
 
-  ' 1) Fill entire screen with board background and draw big-dice faces once
+  ' 2) Fill background and draw both large-dice backs once
   COLOR bgColor, bgColor
   CLS
   RBOX xB, y, size, size, corner, RGB(0,0,0), brownFill
@@ -1033,7 +1042,7 @@ SUB DoOpeningRoll
 
   prevBD = 0 : prevWD = 0
 
-  ' 2) Shake animation, repeat if last roll is doubles
+  ' 3) Shake animation, repeat if final is a double
   DO
     rolls = INT(RND * 8) + 11
     FOR i = 1 TO rolls
@@ -1043,29 +1052,27 @@ SUB DoOpeningRoll
       IF prevBD THEN ClearLargePips xB, y, size, prevBD, brownFill
       IF prevWD THEN ClearLargePips xW, y, size, prevWD, whiteFill
 
-      DrawLargePips xB, y, size, bd, RGB(255,255,255)
-      DrawLargePips xW, y, size, wd, RGB(0,0,0)
+      DrawLargePips   xB, y, size, bd, RGB(255,255,255)
+      DrawLargePips   xW, y, size, wd, RGB(0,0,0)
 
       prevBD = bd : prevWD = wd
-      PAUSE 100
+      PAUSE 150
     NEXT
   LOOP WHILE bd = wd
 
-  ' 3) Decide first player based on final bd, wd
+  ' 4) Decide first player based on final bd,wd
   IF bd > wd THEN
-    turnIsWhite   = 0
-    screenFlipped = 1
-    d1 = bd : d2 = wd
+    turnIsWhite   = 0: screenFlipped = 1
+    d1 = bd: d2 = wd
   ELSE
-    turnIsWhite   = 1
-    screenFlipped = 0
-    d1 = wd : d2 = bd
+    turnIsWhite   = 1: screenFlipped = 0
+    d1 = wd: d2 = bd
   ENDIF
 
-  m1 = d1 : m2 = d2
+  m1 = d1: m2 = d2
 
-  ' 4) Blink the winning LARGE die pips three times
-  winY    = y
+  ' 5) Blink the winning LARGE die pips five times
+  winY = y
   IF turnIsWhite THEN
     winX    = xW
     winFill = whiteFill
@@ -1075,21 +1082,16 @@ SUB DoOpeningRoll
     winFill = brownFill
     pipCol  = RGB(255,255,255)
   ENDIF
-  pause 500
-  FOR b = 1 TO 3
-    ' erase with die face color
-    ClearLargePips winX, winY, size, d1, winFill
-    PAUSE 300
-    ' draw with pip color
-    DrawLargePips winX, winY, size, d1, pipCol
-    PAUSE 300
+  pause 1000
+  FOR b = 1 TO 5
+    ClearLargePips winX, winY, size, d1, winFill  ' erase pips
+    PAUSE 200
+    DrawLargePips   winX, winY, size, d1, pipCol   ' redraw pips
+    PAUSE 200
   NEXT
-
-  PAUSE 2000
+  PAUSE 1000
   canRoll = 0
 END SUB
-
-
 
 
 ' === Draw two large dice side by side ===
@@ -1114,8 +1116,8 @@ END SUB
 ' === Draw pip layout for a large die ===
 SUB DrawLargePips(x, y, size, val, col)
   LOCAL cx, cy, r, off
-  r   = 4
-  off = size \ 4         ' quarter size offset
+  r   = size \ 12        ' e.g. 96/12 = 8-pixel radius
+  off = size \ 4         ' e.g. 96/4  = 24-pixel offset
 
   cx = x + size \ 2
   cy = y + size \ 2
@@ -1124,36 +1126,37 @@ SUB DrawLargePips(x, y, size, val, col)
     CASE 1
       CIRCLE cx, cy, r, , , col, col
     CASE 2
-      CIRCLE x + off,     y + off,     r, , , col, col
-      CIRCLE x + size - off, y + size - off, r, , , col, col
+      CIRCLE x+off,       y+off,       r, , , col, col
+      CIRCLE x+size-off,  y+size-off,  r, , , col, col
     CASE 3
-      CIRCLE x + off,     y + off,     r, , , col, col
-      CIRCLE cx,           cy,           r, , , col, col
-      CIRCLE x + size - off, y + size - off, r, , , col, col
+      CIRCLE x+off,       y+off,       r, , , col, col
+      CIRCLE cx,           cy,          r, , , col, col
+      CIRCLE x+size-off,  y+size-off,  r, , , col, col
     CASE 4
-      CIRCLE x + off,       y + off,       r, , , col, col
-      CIRCLE x + size - off, y + off,       r, , , col, col
-      CIRCLE x + off,       y + size - off, r, , , col, col
-      CIRCLE x + size - off, y + size - off, r, , , col, col
+      CIRCLE x+off,        y+off,        r, , , col, col
+      CIRCLE x+size-off,   y+off,        r, , , col, col
+      CIRCLE x+off,        y+size-off,   r, , , col, col
+      CIRCLE x+size-off,   y+size-off,   r, , , col, col
     CASE 5
-      CIRCLE x + off,       y + off,       r, , , col, col
-      CIRCLE x + size - off, y + off,       r, , , col, col
-      CIRCLE cx,             cy,             r, , , col, col
-      CIRCLE x + off,       y + size - off, r, , , col, col
-      CIRCLE x + size - off, y + size - off, r, , , col, col
+      CIRCLE x+off,        y+off,        r, , , col, col
+      CIRCLE x+size-off,   y+off,        r, , , col, col
+      CIRCLE cx,            cy,          r, , , col, col
+      CIRCLE x+off,        y+size-off,   r, , , col, col
+      CIRCLE x+size-off,   y+size-off,   r, , , col, col
     CASE 6
-      CIRCLE x + off,       y + off,       r, , , col, col
-      CIRCLE x + size - off, y + off,       r, , , col, col
-      CIRCLE x + off,       cy,             r, , , col, col
-      CIRCLE x + size - off, cy,             r, , , col, col
-      CIRCLE x + off,       y + size - off, r, , , col, col
-      CIRCLE x + size - off, y + size - off, r, , , col, col
+      CIRCLE x+off,        y+off,        r, , , col, col
+      CIRCLE x+size-off,   y+off,        r, , , col, col
+      CIRCLE x+off,        cy,           r, , , col, col
+      CIRCLE x+size-off,   cy,           r, , , col, col
+      CIRCLE x+off,        y+size-off,   r, , , col, col
+      CIRCLE x+size-off,   y+size-off,   r, , , col, col
   END SELECT
 END SUB
 
+' Clear pips by drawing them in the die fill color
 SUB ClearLargePips(x, y, size, val, fillCol)
   LOCAL cx, cy, r, off
-  r   = 4
+  r   = size \ 12
   off = size \ 4
   cx  = x + size \ 2
   cy  = y + size \ 2
@@ -1162,12 +1165,12 @@ SUB ClearLargePips(x, y, size, val, fillCol)
     CASE 1
       CIRCLE cx, cy, r+1, , , fillCol, fillCol
     CASE 2
-      CIRCLE x+off,        y+off,        r+1, , , fillCol, fillCol
-      CIRCLE x+size-off,   y+size-off,   r+1, , , fillCol, fillCol
+      CIRCLE x+off,       y+off,        r+1, , , fillCol, fillCol
+      CIRCLE x+size-off,  y+size-off,   r+1, , , fillCol, fillCol
     CASE 3
-      CIRCLE x+off,        y+off,        r+1, , , fillCol, fillCol
-      CIRCLE cx,            cy,          r+1, , , fillCol, fillCol
-      CIRCLE x+size-off,   y+size-off,   r+1, , , fillCol, fillCol
+      CIRCLE x+off,       y+off,        r+1, , , fillCol, fillCol
+      CIRCLE cx,           cy,          r+1, , , fillCol, fillCol
+      CIRCLE x+size-off,  y+size-off,   r+1, , , fillCol, fillCol
     CASE 4
       CIRCLE x+off,        y+off,        r+1, , , fillCol, fillCol
       CIRCLE x+size-off,   y+off,        r+1, , , fillCol, fillCol

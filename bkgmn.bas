@@ -1,4 +1,6 @@
-' Backgammon board for PicoCalc with 18px bar and tray, with screen flipping support
+' Backgammon board for PicoCalc - 2 player pass-the-device
+' Vance Thompson June, 2025
+' https://github.com/VanzT/PicoCalc-Toys
 
 ' === Constants ===
 CONST W = 320
@@ -127,6 +129,7 @@ CASE "T","t"
 
     ' 3) If no legal moves, or you have already consumed all pips, end the turn
     IF legalExists = 0 OR (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
+      DrawCursor cursorIndex, 1
       EndTurn
     ENDIF
   ENDIF

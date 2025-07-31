@@ -6,10 +6,6 @@ OPTION BASE 1
 OPTION EXPLICIT
 RANDOMIZE TIMER
 
-'––– Variables –––
-DIM k$                    ' for INKEY$ under OPTION EXPLICIT
-
-
 '––– Constants –––
 CONST BOARD_SIZE%         = 8
 CONST SQUARE_SIZE%        = 320 \ BOARD_SIZE%   ' = 40
@@ -21,6 +17,9 @@ CONST SELECTOR_COLOR%     = RGB(255, 0, 0)
 CONST ERASE_COLOR%        = BOARD_COLOR%
 CONST SELECTOR_EXTRA_RADIUS% = 2
 CONST SELECTOR_RADIUS% = (SQUARE_SIZE% \ 2) - 1
+
+'––– Variables –––
+DIM k$                    ' for INKEY$ under OPTION EXPLICIT
 DIM board%(BOARD_SIZE%, BOARD_SIZE%)
 
 '––– Main Routine –––

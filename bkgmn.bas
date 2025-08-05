@@ -780,6 +780,10 @@ SUB EndTurn
   turnIsWhite = 1 - turnIsWhite
   ' Allow rolling again
   canRoll = 1
+  doubleFlag = 0
+  movesLeft  = 0
+  m1         = 0
+  m2         = 0
   state = 0
   ' Redraw everything in the new orientation
   ClearScreen

@@ -101,6 +101,12 @@ DO
 
 CASE "T","t"
   IF canRoll = 0 THEN
+  ' If you rolled doubles and used all four pips, end immediately
+    IF doubleFlag AND movesLeft = 0 THEN
+      DrawCursor cursorIndex, 1
+      EndTurn
+      EXIT SELECT
+    END IF
     legalExists = 0
 
     ' 1) If you have checkers on the bar, test re-entry only
@@ -263,12 +269,13 @@ SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
     dist = ABS(i - origPick)
 
     IF doubleFlag THEN
-      ' doubles allow any matching dieVal forward
-      IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) AND dist = dieVal THEN
-        v(i) = 1
+      ' Only propose double moves if there are actually moves left
+      IF movesLeft > 0 THEN
+        IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) AND dist = dieVal THEN
+          v(i) = 1
+        ENDIF
       ENDIF
     ELSE
-      ' normal dice
       IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) THEN
         IF die1 > 0 AND dist = die1 THEN v(i) = 1
         IF die2 > 0 AND dist = die2 THEN v(i) = 1
@@ -284,7 +291,6 @@ SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
       ENDIF
     ENDIF
   NEXT
-
 END SUB
 
 
@@ -367,6 +373,10 @@ SUB PickDrop
       IF dist = dieVal AND movesLeft > 0 THEN
         usedDie = 0
         movesLeft = movesLeft - 1
+        IF movesLeft <= 0 THEN
+          doubleFlag = 0
+          m1 = 0 : m2 = 0
+        ENDIF
       ELSE
         ' Invalid drop: flash cursor
         FOR iFlash = 1 TO 3
@@ -1010,6 +1020,10 @@ SUB bearOff
   ' 7) Consume pip or move counter
   IF doubleFlag THEN
     movesLeft = movesLeft - 1
+    IF movesLeft <= 0 THEN
+      doubleFlag = 0
+      m1 = 0 : m2 = 0
+    ENDIF
   ELSE
     IF usedDie = 1 THEN
       m1 = 0

@@ -6,6 +6,13 @@ bkgmn.bas - playable "pass the device" Backgammon game
 
 bkgmn.txt - notes on Backgammon game mechanics
 
+bkgmn-w.bas - wifi enabled backgammon.  Needs OPTION WIFI "ssid","password" 
+and OPTION UDP SERVER PORT 6000
+set on both devices before starting
+
+chat.bas - simple chat used to test communication between devices
+see bkgmn-w.bas notes above for same OPTIONs that must be set
+
 bsg1.bas - Battlestar Galactica original series.  Attempt at tactical radar display
 Could be worse.
 

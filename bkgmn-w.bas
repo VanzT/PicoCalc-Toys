@@ -46,19 +46,23 @@ DIM lastPeer$
 DIM tStart%, tLastHello%
 DIM rx$
 CONST MAXTOK% = 64
-
 DIM rxParts$(RX_MAX%)
-
 DIM rxCount%         ' number of tokens in rxParts$
-
-
 seq% = 1
 lastSeq% = 0
 started% = 0
 peerSeen% = 0
 rx$ = ""
-
 DIM bcast$, bcast255$
+
+' --- Opening roll exchange state ---
+DIM openW%          ' WHITE's single die (1..6)
+DIM openB%          ' BROWN's single die (1..6)
+DIM haveW%          ' 1 when we know WHITE's die
+DIM haveB%          ' 1 when we know BROWN's die
+DIM openingDone%    ' 1 once we finished the opening selection
+DIM tLastOpen%      ' resend timer for OPEN1
+
 
 ' === Game state ===
 DIM pieces(23)
@@ -93,6 +97,11 @@ FUNCTION NowMs%()
   NowMs% = INT(TIMER)
 END FUNCTION
 
+SUB SendOpen1(role$, val%)
+  seq% = seq% + 1
+  ' Role + value + our gameId so the other side can just store by role
+  UdpBroadcast "OPEN1," + role$ + "," + STR$(val%) + "," + gameId$ + "," + STR$(seq%)
+END SUB
 
 FUNCTION RandHex$(n%)
   LOCAL s$, ii%
@@ -163,8 +172,11 @@ SUB NetInit()
   peerSeen%   = 0
   seq%        = 1
   lastSeq%    = 0
-
-  tStart%     = NowMs%()         ' (NowMs% = TIMER per your fix)
+  openingDone% = 0
+  haveW% = 0 : haveB% = 0
+  openW% = 0 : openB% = 0
+  tLastOpen% = 0
+  tStart%     = NowMs%()
   tLastHello% = 0
   StatusHUD("NetInit")
 END SUB
@@ -392,6 +404,22 @@ SUB HandlePacket(pkt$)
         ENDIF
       ENDIF
 
+    CASE "OPEN1"
+      ' OPEN1,<role>,<val>,<otherGameId>,<seq>
+      IF n% >= 5 THEN
+        ' Optional: bump lastSeq% (keeps ordering monotonic)
+        thisSeq% = VAL(rxParts$(5))
+        IF thisSeq% > lastSeq% THEN lastSeq% = thisSeq%
+
+        IF openingDone% = 0 THEN
+          IF UCASE$(rxParts$(2)) = "WHITE" THEN
+            openW% = VAL(rxParts$(3)) : haveW% = 1
+          ELSE
+            openB% = VAL(rxParts$(3)) : haveB% = 1
+          ENDIF
+        ENDIF
+      ENDIF
+
     CASE "DICE"
       ' DICE,<roller>,<d1>,<d2>,<seq>
       IF n% >= 5 THEN
@@ -426,11 +454,6 @@ SUB HandlePacket(pkt$)
   END SELECT
 END SUB
 
-
-
-
-
-
 SUB NetPoll()
   LOCAL from$, pkt$, now%
   now% = NowMs%()
@@ -463,12 +486,127 @@ SUB NetPoll()
     EXIT SUB
   ENDIF
 
+  ' --- Opening exchange: symmetric one-die-per-side until not a tie ---
+  IF started% AND openingDone% = 0 THEN
+    ' Ensure our local single die is chosen & sent (once), then resend every 1s until both received.
+    IF myRole$ = "WHITE" THEN
+      IF haveW% = 0 THEN
+        openW% = INT(RND * 6) + 1
+        haveW% = 1
+        SendOpen1 "WHITE", openW% : tLastOpen% = NowMs%()
+      ELSEIF NowMs%() - tLastOpen% >= 1000 AND haveB% = 0 THEN
+        SendOpen1 "WHITE", openW% : tLastOpen% = NowMs%()
+      ENDIF
+    ELSE
+      IF haveB% = 0 THEN
+        openB% = INT(RND * 6) + 1
+        haveB% = 1
+        SendOpen1 "BROWN", openB% : tLastOpen% = NowMs%()
+      ELSEIF NowMs%() - tLastOpen% >= 1000 AND haveW% = 0 THEN
+        SendOpen1 "BROWN", openB% : tLastOpen% = NowMs%()
+      ENDIF
+    ENDIF
+
+    ' If we have both values, resolve tie or finish.
+    IF haveW% AND haveB% THEN
+      IF openW% = openB% THEN
+        ' Tie: clear and repeat (both sides do this symmetrically)
+        haveW% = 0 : haveB% = 0
+      ELSE
+        ' Not a tie: animate and lock in the first turn & dice
+        AnimateOpeningAndApply openW%, openB%
+        openingDone% = 1
+        ' canRoll stays 0; the winner will move immediately using m1/m2 we set.
+      ENDIF
+    ENDIF
+
+    ' While opening not done, skip normal play path this tick.
+    EXIT SUB
+  END IF
+
   ' --- Phase 3: normal play ---
   'pkt$ = UdpRecvLine$(from$)
   'IF pkt$ <> "" THEN HandlePacket pkt$
 END SUB
 
+SUB AnimateOpeningAndApply(wd%, bd%)
+  ' wd% is WHITEs die, bd% is BROWNs die
 
+  ' --- All locals must be declared up-front in MMBasic ---
+  LOCAL size, corner, y, xB, xW
+  LOCAL i, rolls, prevBD, prevWD
+  LOCAL brownFill, whiteFill, pipW, pipB
+  LOCAL winIsWhite%, b
+  LOCAL rB, rW
+
+  size      = 96
+  corner    = size \ 8
+  y         = (H - size) \ 2
+  xB        = (W \ 4) - (size \ 2)
+  xW        = (3 * W \ 4) - (size \ 2)
+
+  brownFill = RGB(100,60,20)
+  whiteFill = RGB(240,240,220)
+  pipB      = RGB(255,255,255)
+  pipW      = RGB(0,0,0)
+
+  COLOR bgColor, bgColor
+  CLS
+  RBOX xB, y, size, size, corner, RGB(0,0,0), brownFill
+  RBOX xW, y, size, size, corner, RGB(0,0,0), whiteFill
+
+  ' --- quick “rolling” animation frames ---
+  prevBD = 0 : prevWD = 0
+  rolls  = INT(RND * 8) + 11
+  FOR i = 1 TO rolls
+    rB = INT(RND * 6) + 1
+    rW = INT(RND * 6) + 1
+    IF prevBD THEN ClearLargePips xB, y, size, prevBD, brownFill
+    IF prevWD THEN ClearLargePips xW, y, size, prevWD, whiteFill
+    DrawLargePips xB, y, size, rB, pipB
+    DrawLargePips xW, y, size, rW, pipW
+    prevBD = rB : prevWD = rW
+    PAUSE 120
+  NEXT
+
+  ' --- show the agreed final values ---
+  IF prevBD THEN ClearLargePips xB, y, size, prevBD, brownFill
+  IF prevWD THEN ClearLargePips xW, y, size, prevWD, whiteFill
+  DrawLargePips xB, y, size, bd%, pipB
+  DrawLargePips xW, y, size, wd%, pipW
+
+  ' --- flash the winners die ---
+  winIsWhite% = (wd% > bd%)
+  PAUSE 500
+  FOR b = 1 TO 5
+    IF winIsWhite% THEN
+      ClearLargePips xW, y, size, wd%, whiteFill
+      PAUSE 180
+      DrawLargePips   xW, y, size, wd%, pipW
+    ELSE
+      ClearLargePips xB, y, size, bd%, brownFill
+      PAUSE 180
+      DrawLargePips   xB, y, size, bd%, pipB
+    ENDIF
+    PAUSE 180
+  NEXT
+
+  ' --- apply first turn: winner uses both dice ---
+  IF winIsWhite% THEN
+    turnIsWhite = 1
+    d1 = wd% : d2 = bd%
+  ELSE
+    turnIsWhite = 0
+    d1 = bd% : d2 = wd%
+  ENDIF
+
+  m1 = d1 : m2 = d2
+  doubleFlag = 0
+  movesLeft  = 2
+  canRoll    = 0
+
+  RedrawAll
+END SUB
 
 
 ' === Render helper (fixed by role) =========================================

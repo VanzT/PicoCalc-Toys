@@ -55,6 +55,8 @@ peerSeen% = 0
 rx$ = ""
 DIM bcast$, bcast255$
 
+DIM hudHideAt%, hudHidden%
+
 ' --- Opening roll exchange state ---
 DIM openW%          ' WHITE's single die (1..6)
 DIM openB%          ' BROWN's single die (1..6)
@@ -114,28 +116,40 @@ END FUNCTION
 
 
 SUB StatusHUD(msg$)
-  LOCAL ip$, role$, s$
-  ip$ = MM.INFO(IP ADDRESS)
+  LOCAL ip$, role$, s$, now%
+  now% = NowMs%()
 
-  IF myRole$ = "" THEN
-    role$ = "-"
-  ELSE
-    role$ = myRole$
+  ' schedule the 2s display window once pairing is done
+  IF started% = 1 AND hudHideAt% < 0 THEN
+    hudHideAt% = now% + 2000
   ENDIF
+
+  ' after the window passes, clear once and never draw again
+  IF started% = 1 AND hudHideAt% >= 0 AND now% >= hudHideAt% THEN
+    IF hudHidden% = 0 THEN
+      COLOR bgColor, bgColor
+      BOX 0,0,W,14, , bgColor
+      hudHidden% = 1
+    ENDIF
+    EXIT SUB
+  ENDIF
+
+  ' build the line while discovery/handshake is active,
+  ' or during the 2s grace window after pairing
+  ip$ = MM.INFO(IP ADDRESS)
+  IF myRole$ = "" THEN role$ = "-" ELSE role$ = myRole$
 
   s$ = bcast$ + "Role:" + role$ + "  started:" + STR$(started%) + "  peer:" + STR$(peerSeen%) + "  IP:" + ip$ + "  msg:" + msg$
   IF lastPeer$ <> "" THEN
     s$ = s$ + "  lastPeer:" + lastPeer$
   ELSE
     s$ = s$ + "  lastPeer:-"
-  END IF
+  ENDIF
 
   COLOR RGB(255,255,255), bgColor
   BOX 0,0,W,14, , bgColor
   PRINT @(0,0) s$
 END SUB
-
-
 
 SUB EnsureWifiAndBroadcasts()
   ' Start Wi-Fi if not already connected; wait up to ~6s
@@ -164,7 +178,7 @@ END SUB
 SUB NetInit()
   EnsureWifiAndBroadcasts
   WEB UDP OPEN SERVER PORT PORT%
-  WEB UDP INTERRUPT OnUDP        ' <<< add this
+  WEB UDP INTERRUPT OnUDP
 
   gameId$     = RandHex$(8)
   myRole$     = ""
@@ -172,14 +186,16 @@ SUB NetInit()
   peerSeen%   = 0
   seq%        = 1
   lastSeq%    = 0
-  openingDone% = 0
-  haveW% = 0 : haveB% = 0
-  openW% = 0 : openB% = 0
-  tLastOpen% = 0
+
   tStart%     = NowMs%()
   tLastHello% = 0
+
+  hudHideAt%  = -1
+  hudHidden%  = 0
+
   StatusHUD("NetInit")
 END SUB
+
 
 
 SUB OnUDP
@@ -608,6 +624,15 @@ SUB AnimateOpeningAndApply(wd%, bd%)
   RedrawAll
 END SUB
 
+FUNCTION IsMyTurn%()
+  IF myRole$ = "WHITE" THEN
+    IsMyTurn% = (turnIsWhite <> 0)
+  ELSEIF myRole$ = "BROWN" THEN
+    IsMyTurn% = (turnIsWhite = 0)
+  ELSE
+    IsMyTurn% = 0
+  ENDIF
+END FUNCTION
 
 ' === Render helper (fixed by role) =========================================
 SUB RedrawAll
@@ -1587,10 +1612,19 @@ END SUB
 
 SUB ApplyEndTurn(nextTurn$)
   turnIsWhite = (UCASE$(nextTurn$) = "WHITE")
-  hasPicked = 0
+  hasPicked   = 0
+
+  ' reset for the player who is about to act on this device
+  canRoll     = 1
+  doubleFlag  = 0
+  movesLeft   = 0
+  m1 = 0 : m2 = 0
+  d1 = 0 : d2 = 0         ' draw blank dice until a roll happens
+
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   RedrawAll
 END SUB
+
 
 ' === Coordinate helpers =====================================================
 FUNCTION FX(x)
@@ -1728,6 +1762,15 @@ DO
   ENDIF
 
   k$ = INKEY$
+  
+  IF NOT IsMyTurn%() THEN
+    ' not my turn so ignore any key
+    IF k$ <> "" THEN k$ = ""
+    StatusHUD("Waiting for opponent")
+    PAUSE 10
+    CONTINUE DO
+  END IF
+
   
   IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
     hasPicked = 1

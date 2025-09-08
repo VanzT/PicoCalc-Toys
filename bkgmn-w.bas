@@ -10,7 +10,6 @@ OPTION BASE 0
 
 CONST W = 320
 CONST H = 320
-CONST BAR_INDEX = 24
 CONST POINT_W = 23.666
 CONST BAR_W = 18
 CONST TRAY_W = 18
@@ -24,7 +23,6 @@ X_OFFSET = 0  ' Align left
 bgColor        = RGB(170,150,120)
 barColor       = RGB(200,200,200)
 trayColor      = RGB(120,100,80)
-edgeColor      = RGB(80,80,80)
 triColor1      = RGB(210,180,140)
 triColor2      = RGB(255,255,255)
 cursorColor    = RGB(255,0,0)
@@ -34,7 +32,6 @@ selectedCursorColor = RGB(0,255,0)
 CONST PORT% = 6000
 CONST HANDSHAKE_LISTEN_MS% = 5000
 CONST HELLO_RETRY_MS% = 1000
-CONST MAXLINE% = 512
 
 DIM myRole$        ' "WHITE" or "BROWN"
 DIM gameId$
@@ -45,18 +42,13 @@ DIM peerSeen%
 DIM lastPeer$
 DIM tStart%, tLastHello%
 DIM rx$
-CONST MAXTOK% = 64
 DIM rxParts$(RX_MAX%)
 DIM rxCount%         ' number of tokens in rxParts$
 seq% = 1
 lastSeq% = 0
 started% = 0
 peerSeen% = 0
-rx$ = ""
 DIM bcast$, bcast255$
-
-DIM hudHideAt%, hudHidden%
-DIM pairedDone%
 
 DIM postPairingAt%
 DIM kickoffDone%
@@ -78,15 +70,13 @@ DIM tLastOpen%      ' resend timer for OPEN1
 ' === Game state ===
 DIM pieces(23)
 DIM movesLeft, dieVal, doubleFlag  ' doubles rule support
-DIM d1, d2, m1, m2, dieVal1, dieVal2
+DIM d1, d2, m1, m2
 DIM whiteBar, blackBar
 DIM whiteOff, blackOff
-DIM barActive, allowEnd
 DIM x%(2), y%(2)
-DIM state          ' 0=not rolled, 1=rolled, 2=no more moves
 DIM hasPicked
-DIM cursorIndex, pickedPoint
-DIM validPoints(23), cursorSeq(23)
+DIM cursorIndex
+DIM validPoints(23)
 DIM turnIsWhite
 DIM screenFlipped
 DIM whiteCursor, blackCursor
@@ -108,12 +98,6 @@ FUNCTION NowMs%()
   NowMs% = INT(TIMER)
 END FUNCTION
 
-SUB SendOpen1(role$, val%)
-  seq% = seq% + 1
-  ' Role + value + our gameId so the other side can just store by role
-  UdpBroadcast "OPEN1," + role$ + "," + STR$(val%) + "," + gameId$ + "," + STR$(seq%)
-END SUB
-
 FUNCTION RandHex$(n%)
   LOCAL s$, ii%
   s$ = ""
@@ -123,28 +107,8 @@ FUNCTION RandHex$(n%)
   RandHex$ = s$
 END FUNCTION
 
-SUB AfterPairingKickoff
-  LOCAL t%
-  IF pairedDone% THEN EXIT SUB
-
-  StatusHUD("Paired")
-  t% = NowMs%() + 2000
-  DO WHILE NowMs%() < t%: PAUSE 20: LOOP
-
-  COLOR bgColor, bgColor
-  BOX 0,0,W,14, , bgColor
-
-  pairedDone% = 1
-
-  IF myRole$ = "WHITE" THEN
-    DoOpeningRoll_NetMaster
-  ENDIF
-END SUB
-
 SUB StatusHUD(msg$)
   IF showHUD% = 0 THEN EXIT SUB
-  IF pairedDone% THEN EXIT SUB
-
   LOCAL ip$, role$, s$
   ip$ = MM.INFO(IP ADDRESS)
   IF myRole$ = "" THEN role$ = "-" ELSE role$ = myRole$
@@ -224,12 +188,6 @@ SUB OnUDP
   HandlePacket m$
 END SUB
 
-
-
-SUB NetClose()
-  ' WEB UDP CLOSE
-END SUB
-
 SUB UdpBroadcast(msg$)
   ' Dual broadcast (some APs only allow subnet, some all-ones)
   WEB UDP SEND bcast$,    PORT%, msg$
@@ -252,9 +210,10 @@ SUB SendHello(role$)
 END SUB
 
 
-SUB SendOpen(wd%, bd%)
+SUB SendOpen1(role$, val%)
   seq% = seq% + 1
-  UdpBroadcast "OPEN," + STR$(wd%) + "," + STR$(bd%) + "," + STR$(seq%)
+  ' Role + value + our gameId so the other side can just store by role
+  UdpBroadcast "OPEN1," + role$ + "," + STR$(val%) + "," + gameId$ + "," + STR$(seq%)
 END SUB
 
 SUB SendDice(roller$, dd1%, dd2%)
@@ -268,61 +227,6 @@ SUB SendBoard(nextTurn$)
   seq% = seq% + 1
   UdpBroadcast "BOARD," + nextTurn$ + "," + s$ + "," + STR$(seq%)
 END SUB
-
-SUB SendEndTurn(nextTurn$)
-  seq% = seq% + 1
-  UdpBroadcast "ENDTURN," + nextTurn$ + "," + STR$(seq%)
-END SUB
-
-' Trim any characters in c$ from the start and end of s$
-FUNCTION Trim$(s$, c$)
-  Trim$ = RTrim$(LTrim$(s$, c$), c$)
-END FUNCTION
-
-' Trim from the end
-FUNCTION RTrim$(s$, c$)
-  LOCAL j%
-  j% = LEN(s$)
-  DO WHILE j% > 0 AND INSTR(c$, MID$(s$, j%, 1)) > 0
-    j% = j% - 1
-  LOOP
-  RTrim$ = LEFT$(s$, j%)
-END FUNCTION
-
-' Trim from the start
-FUNCTION LTrim$(s$, c$)
-  LOCAL i%, n%
-  n% = LEN(s$)
-  i% = 1
-  DO WHILE i% <= n% AND INSTR(c$, MID$(s$, i%, 1)) > 0
-    i% = i% + 1
-  LOOP
-  LTrim$ = MID$(s$, i%)
-END FUNCTION
-
-
-FUNCTION SplitCSV$(s$)()
-  LOCAL a$(), p%, q%, t$
-  REDIM a$(0)
-  p% = 1
-  DO
-    q% = INSTR(p%, s$, ",")
-    IF q% = 0 THEN
-      t$ = MID$(s$, p%)
-    ELSE
-      t$ = MID$(s$, p%, q% - p%)
-    ENDIF
-    IF a$(0) = "" AND UBOUND(a$) = 0 THEN
-      a$(0) = LTRIM$(RTRIM$(t$))
-    ELSE
-      REDIM PRESERVE a$(UBOUND(a$) + 1)
-      a$(UBOUND(a$)) = LTRIM$(RTRIM$(t$))
-    END IF
-    IF q% = 0 THEN EXIT DO
-    p% = q% + 1
-  LOOP
-  SplitCSV$ = a$
-END FUNCTION
 
 SUB SplitCSVInto(s$)
   LOCAL p%, q%, t$, idx%, lim%
@@ -420,18 +324,6 @@ SUB HandlePacket(pkt$)
         ENDIF
       ENDIF
 
-
-
-    CASE "OPEN"
-      ' OPEN,<wd>,<bd>,<seq>
-      IF n% >= 4 THEN
-        thisSeq% = VAL(rxParts$(4))
-        IF thisSeq% > lastSeq% THEN
-          lastSeq% = thisSeq%
-          ApplyOpening VAL(rxParts$(2)), VAL(rxParts$(3))
-        ENDIF
-      ENDIF
-
     CASE "OPEN1"
       ' OPEN1,<role>,<val>,<otherGameId>,<seq>
       IF n% >= 5 THEN
@@ -457,7 +349,6 @@ SUB HandlePacket(pkt$)
           ApplyDice UCASE$(rxParts$(2)), VAL(rxParts$(3)), VAL(rxParts$(4))
         ENDIF
       ENDIF
-
     CASE "BOARD"
       ' BOARD,<nextTurn>,<24 pts>,<whiteBar>,<blackBar>,<whiteOff>,<blackOff>,<seq>
       IF n% >= 31 THEN
@@ -467,18 +358,6 @@ SUB HandlePacket(pkt$)
           ApplyBoard1Based
         ENDIF
       ENDIF
-
-    CASE "ENDTURN"
-      ' ENDTURN,<nextTurn>,<seq>
-      IF n% >= 3 THEN
-        thisSeq% = VAL(rxParts$(3))
-        IF thisSeq% > lastSeq% THEN
-          lastSeq% = thisSeq%
-          nextTurn$ = UCASE$(rxParts$(2))
-          ApplyEndTurn nextTurn$
-        ENDIF
-      ENDIF
-
   END SELECT
 END SUB
 
@@ -1353,23 +1232,6 @@ SUB gameOver
   PRINT "YOU WIN"
 END SUB
 
-' === Draw two large dice (kept for completeness) ===
-SUB DrawLargeDice(brownVal, whiteVal)
-  LOCAL xB, xW, y, size, corner
-
-  size   = 48
-  corner = 6
-  y      = (H - size) / 2
-
-  xB = (W / 4) - (size / 2)
-  RBOX xB, y, size, size, corner, RGB(0,0,0), RGB(100,60,20)
-  DrawLargePips xB, y, size, brownVal, RGB(255,255,255)
-
-  xW = (3 * W / 4) - (size / 2)
-  RBOX xW, y, size, size, corner, RGB(0,0,0), RGB(240,240,220)
-  DrawLargePips xW, y, size, whiteVal, RGB(0,0,0)
-END SUB
-
 ' === Draw pip layout for a large die ===
 SUB DrawLargePips(x, y, size, val, col)
   LOCAL cx, cy, r, off
@@ -1449,97 +1311,7 @@ SUB ClearLargePips(x, y, size, val, fillCol)
   END SELECT
 END SUB
 
-' === OPENING ROLL (network-aware) ==========================================
-SUB DoOpeningRoll_NetMaster
-  ' WHITE performs animated opening roll, then sends OPEN
-  LOCAL rolls, i, bd, wd, prevBD, prevWD
-  LOCAL size, corner, y, xB, xW
-  LOCAL brownFill, whiteFill
-  LOCAL winX, winY, winFill, pipCol, b
 
-  size      = 96
-  corner    = size \ 8
-  y         = (H - size) \ 2
-  xB        = (W \ 4) - (size \ 2)
-  xW        = (3 * W \ 4) - (size \ 2)
-
-  brownFill = RGB(100,60,20)
-  whiteFill = RGB(240,240,220)
-
-  COLOR bgColor, bgColor
-  CLS
-  RBOX xB, y, size, size, corner, RGB(0,0,0), brownFill
-  RBOX xW, y, size, size, corner, RGB(0,0,0), whiteFill
-
-  prevBD = 0 : prevWD = 0
-
-  DO
-    rolls = INT(RND * 8) + 11
-    FOR i = 1 TO rolls
-      bd = INT(RND * 6) + 1
-      wd = INT(RND * 6) + 1
-
-      IF prevBD THEN ClearLargePips xB, y, size, prevBD, brownFill
-      IF prevWD THEN ClearLargePips xW, y, size, prevWD, whiteFill
-
-      DrawLargePips   xB, y, size, bd, RGB(255,255,255)
-      DrawLargePips   xW, y, size, wd, RGB(0,0,0)
-
-      prevBD = bd : prevWD = wd
-      PAUSE 150
-    NEXT
-  LOOP WHILE bd = wd
-
-  IF bd > wd THEN
-    turnIsWhite = 0
-    d1 = bd: d2 = wd
-  ELSE
-    turnIsWhite = 1
-    d1 = wd: d2 = bd
-  ENDIF
-
-  m1 = d1: m2 = d2
-
-  IF turnIsWhite THEN
-    winX    = xW
-    winY    = y
-    winFill = whiteFill
-    pipCol  = RGB(0,0,0)
-  ELSE
-    winX    = xB
-    winY    = y
-    winFill = brownFill
-    pipCol  = RGB(255,255,255)
-  ENDIF
-  PAUSE 1000
-  FOR b = 1 TO 5
-    ClearLargePips winX, winY, size, d1, winFill
-    PAUSE 200
-    DrawLargePips   winX, winY, size, d1, pipCol
-    PAUSE 200
-  NEXT
-  PAUSE 500
-
-  ' Send to peer
-  SendOpen d1, d2
-
-  canRoll = 0
-  RedrawAll
-END SUB
-
-SUB ApplyOpening(wd%, bd%)
-  ' BROWN side adopts WHITE's opening roll
-  IF bd% > wd% THEN
-    turnIsWhite = 0
-    d1 = bd%: d2 = wd%
-  ELSE
-    turnIsWhite = 1
-    d1 = wd%: d2 = bd%
-  ENDIF
-  m1 = d1: m2 = d2
-  canRoll = 0
-  RedrawAll
-END SUB
 
 ' === RollDice Subroutine (broadcast) =======================================
 SUB RollDice
@@ -1599,21 +1371,6 @@ FUNCTION SerializeBoard$()
   SerializeBoard$ = s$
 END FUNCTION
 
-SUB ApplyBoard(parts$(), n%)
-  ' parts$: 0=BOARD, 1=nextTurn, 2..25=24 points, 26=whiteBar, 27=blackBar, 28=whiteOff, 29=blackOff, 30=seq
-  LOCAL idx%
-  FOR idx% = 0 TO 23
-    pieces(idx%) = VAL(parts$(2 + idx%))
-  NEXT
-  whiteBar = VAL(parts$(26))
-  blackBar = VAL(parts$(27))
-  whiteOff = VAL(parts$(28))
-  blackOff = VAL(parts$(29))
-
-  turnIsWhite = (UCASE$(parts$(1)) = "WHITE")
-  RedrawAll
-END SUB
-
 SUB ApplyBoard1Based
   LOCAL idx%
   FOR idx% = 0 TO 23
@@ -1638,25 +1395,6 @@ SUB ApplyBoard1Based
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   RedrawAll
 END SUB
-
-
-
-
-SUB ApplyEndTurn(nextTurn$)
-  turnIsWhite = (UCASE$(nextTurn$) = "WHITE")
-  hasPicked   = 0
-
-  ' reset for the player who is about to act on this device
-  canRoll     = 1
-  doubleFlag  = 0
-  movesLeft   = 0
-  m1 = 0 : m2 = 0
-  d1 = 0 : d2 = 0         ' draw blank dice until a roll happens
-
-  BuildValidPoints pieces(), validPoints(), turnIsWhite
-  RedrawAll
-END SUB
-
 
 ' === Coordinate helpers =====================================================
 FUNCTION FX(x)
@@ -1767,11 +1505,7 @@ DrawDice turnIsWhite
 ' Build valid points BEFORE choosing the initial cursor
 BuildValidPoints pieces(), validPoints(), turnIsWhite
 
-FOR i = 0 TO 23
-  cursorSeq(i) = i
-NEXT
 hasPicked   = 0
-pickedPoint = -1
 
 ' Find the first valid point, wrapping safely (no out-of-bounds)
 cursorIndex = 0

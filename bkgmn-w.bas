@@ -1131,7 +1131,6 @@ SUB EndTurn
     nextTurn$ = "BROWN"
   ENDIF
   SendBoard nextTurn$
-  SendEndTurn nextTurn$
 
   RedrawAll
   BuildValidPoints pieces(), validPoints(), turnIsWhite
@@ -1617,8 +1616,6 @@ END SUB
 
 SUB ApplyBoard1Based
   LOCAL idx%
-  ' rxParts$(1)=BOARD, (2)=nextTurn, (3..26)=24 points, (27)=whiteBar, (28)=blackBar,
-  '               (29)=whiteOff, (30)=blackOff, (31)=seq
   FOR idx% = 0 TO 23
     pieces(idx%) = VAL(rxParts$(3 + idx%))
   NEXT
@@ -1626,9 +1623,22 @@ SUB ApplyBoard1Based
   blackBar = VAL(rxParts$(28))
   whiteOff = VAL(rxParts$(29))
   blackOff = VAL(rxParts$(30))
+
+  ' Who moves next comes with the board
   turnIsWhite = (UCASE$(rxParts$(2)) = "WHITE")
+
+  ' Reset local move state for the player about to act on this device
+  hasPicked  = 0
+  canRoll    = 1
+  doubleFlag = 0
+  movesLeft  = 0
+  m1 = 0 : m2 = 0
+  d1 = 0 : d2 = 0
+
+  BuildValidPoints pieces(), validPoints(), turnIsWhite
   RedrawAll
 END SUB
+
 
 
 

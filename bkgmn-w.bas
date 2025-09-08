@@ -56,6 +56,15 @@ rx$ = ""
 DIM bcast$, bcast255$
 
 DIM hudHideAt%, hudHidden%
+DIM pairedDone%
+
+DIM postPairingAt%
+DIM kickoffDone%
+DIM showHUD%
+postPairingAt% = 0
+kickoffDone%   = 0
+showHUD%       = 1
+
 
 ' --- Opening roll exchange state ---
 DIM openW%          ' WHITE's single die (1..6)
@@ -114,28 +123,29 @@ FUNCTION RandHex$(n%)
   RandHex$ = s$
 END FUNCTION
 
+SUB AfterPairingKickoff
+  LOCAL t%
+  IF pairedDone% THEN EXIT SUB
+
+  StatusHUD("Paired")
+  t% = NowMs%() + 2000
+  DO WHILE NowMs%() < t%: PAUSE 20: LOOP
+
+  COLOR bgColor, bgColor
+  BOX 0,0,W,14, , bgColor
+
+  pairedDone% = 1
+
+  IF myRole$ = "WHITE" THEN
+    DoOpeningRoll_NetMaster
+  ENDIF
+END SUB
 
 SUB StatusHUD(msg$)
-  LOCAL ip$, role$, s$, now%
-  now% = NowMs%()
+  IF showHUD% = 0 THEN EXIT SUB
+  IF pairedDone% THEN EXIT SUB
 
-  ' schedule the 2s display window once pairing is done
-  IF started% = 1 AND hudHideAt% < 0 THEN
-    hudHideAt% = now% + 2000
-  ENDIF
-
-  ' after the window passes, clear once and never draw again
-  IF started% = 1 AND hudHideAt% >= 0 AND now% >= hudHideAt% THEN
-    IF hudHidden% = 0 THEN
-      COLOR bgColor, bgColor
-      BOX 0,0,W,14, , bgColor
-      hudHidden% = 1
-    ENDIF
-    EXIT SUB
-  ENDIF
-
-  ' build the line while discovery/handshake is active,
-  ' or during the 2s grace window after pairing
+  LOCAL ip$, role$, s$
   ip$ = MM.INFO(IP ADDRESS)
   IF myRole$ = "" THEN role$ = "-" ELSE role$ = myRole$
 
@@ -150,6 +160,7 @@ SUB StatusHUD(msg$)
   BOX 0,0,W,14, , bgColor
   PRINT @(0,0) s$
 END SUB
+
 
 SUB EnsureWifiAndBroadcasts()
   ' Start Wi-Fi if not already connected; wait up to ~6s
@@ -193,6 +204,7 @@ SUB NetInit()
   hudHideAt%  = -1
   hudHidden%  = 0
 
+  pairedDone% = 0
   StatusHUD("NetInit")
 END SUB
 
@@ -362,31 +374,24 @@ SUB HandlePacket(pkt$)
   SELECT CASE tag$
 
     CASE "HELLO"
-      ' HELLO,<role>,<gameId>
       IF n% >= 3 THEN
         otherRole$ = UCASE$(rxParts$(2))
         otherId$   = rxParts$(3)
-
-        ' Ignore our own echo
         IF otherId$ = gameId$ THEN EXIT SUB
 
         peerSeen% = 1
 
         IF myRole$ = "" THEN
-          ' We were listening: adopt opposite role
           IF otherRole$ = "WHITE" THEN
             myRole$ = "BROWN" : screenFlipped = 1
           ELSE
             myRole$ = "WHITE" : screenFlipped = 0
           ENDIF
           SendHello myRole$
-          started% = 1
           RedrawAll
         ELSE
-          ' Collision resolution (both claim same role)
           IF myRole$ = otherRole$ THEN
             IF myRole$ = "WHITE" THEN
-              ' both WHITE: larger gameId$ yields -> becomes BROWN
               IF gameId$ > otherId$ THEN
                 myRole$ = "BROWN" : screenFlipped = 1
                 SendHello myRole$
@@ -395,7 +400,6 @@ SUB HandlePacket(pkt$)
                 SendHello myRole$
               ENDIF
             ELSE
-              ' both BROWN: smaller gameId$ yields -> becomes WHITE
               IF gameId$ < otherId$ THEN
                 myRole$ = "WHITE" : screenFlipped = 0
                 SendHello myRole$
@@ -404,11 +408,19 @@ SUB HandlePacket(pkt$)
                 SendHello myRole$
               ENDIF
             ENDIF
-          ELSE
-            started% = 1   ' complementary -> paired
+          ENDIF
+        ENDIF
+
+        ' paired when roles are complementary
+        IF myRole$ <> "" AND otherRole$ <> "" AND myRole$ <> otherRole$ THEN
+          IF started% = 0 THEN
+            started%      = 1
+            postPairingAt% = NowMs%() + 2000
           ENDIF
         ENDIF
       ENDIF
+
+
 
     CASE "OPEN"
       ' OPEN,<wd>,<bd>,<seq>
@@ -501,6 +513,16 @@ SUB NetPoll()
     'IF pkt$ <> "" THEN HandlePacket pkt$
     EXIT SUB
   ENDIF
+  ' after pairing, wait 2 seconds, then hide HUD exactly once
+  IF started% = 1 AND kickoffDone% = 0 THEN
+    IF postPairingAt% > 0 AND NowMs%() >= postPairingAt% THEN
+      showHUD%     = 0
+      kickoffDone% = 1
+      ' do not roll here; the OPEN1 exchange below will handle the opening
+    END IF
+    EXIT SUB
+  END IF
+
 
   ' --- Opening exchange: symmetric one-die-per-side until not a tie ---
   IF started% AND openingDone% = 0 THEN
@@ -1760,7 +1782,13 @@ DO
     k$ = INKEY$: IF k$ <> "" THEN k$ = "" ' ignore keys until paired
     CONTINUE DO
   ENDIF
-
+  ' block keys until opening exchange is done
+  IF openingDone% = 0 THEN
+    PAUSE 10
+    k$ = INKEY$: IF k$ <> "" THEN k$ = ""
+    CONTINUE DO
+  END IF
+  
   k$ = INKEY$
   
   IF NOT IsMyTurn%() THEN

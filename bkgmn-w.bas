@@ -28,6 +28,10 @@ triColor2      = RGB(255,255,255)
 cursorColor    = RGB(255,0,0)
 selectedCursorColor = RGB(0,255,0)
 
+' === WS2812 strip ===
+CONST LEDCOUNT = 8
+DIM ledBuf%(LEDCOUNT - 1)
+
 ' === NET constants ===
 CONST PORT% = 6000
 CONST HANDSHAKE_LISTEN_MS% = 5000
@@ -81,6 +85,10 @@ DIM turnIsWhite
 DIM screenFlipped
 DIM whiteCursor, blackCursor
 DIM k$, legalExists, src, dst, origPick, entryPt
+DIM gameOver%, gameWinner$
+gameOver% = 0
+gameWinner$ = ""
+
 
 ' === Helpers ================================================================
 
@@ -112,19 +120,36 @@ SUB StatusHUD(msg$)
   LOCAL ip$, role$, s$
   ip$ = MM.INFO(IP ADDRESS)
   IF myRole$ = "" THEN role$ = "-" ELSE role$ = myRole$
-
-  s$ = bcast$ + "Role:" + role$ + "  started:" + STR$(started%) + "  peer:" + STR$(peerSeen%) + "  IP:" + ip$ + "  msg:" + msg$
+  s$ = "Role: " + role$ + CHR$(13) + CHR$(10) + "started: " + STR$(started%) + CHR$(13) + CHR$(10) + "peer: " + STR$(peerSeen%) + CHR$(13) + CHR$(10) + "IP: " + ip$ + CHR$(13) + CHR$(10) + "msg: " + msg$
   IF lastPeer$ <> "" THEN
-    s$ = s$ + "  lastPeer:" + lastPeer$
+    s$ = s$ + CHR$(13) + CHR$(10) + "lastPeer: " + lastPeer$
   ELSE
-    s$ = s$ + "  lastPeer:-"
+    s$ = s$ + CHR$(13) + CHR$(10) + "lastPeer: -"
   ENDIF
-
   COLOR RGB(255,255,255), bgColor
   BOX 0,0,W,14, , bgColor
   PRINT @(0,0) s$
 END SUB
 
+SUB LED_AllOff
+  LOCAL i%
+  FOR i% = 0 TO LEDCOUNT - 1: ledBuf%(i%) = 0: NEXT
+  BITBANG ws2812 o, GP28, LEDCOUNT, ledBuf%()
+END SUB
+
+SUB LED_AllGreen
+  LOCAL i%
+  FOR i% = 0 TO LEDCOUNT - 1: ledBuf%(i%) = &H00FF00: NEXT   ' RGB packed
+  BITBANG ws2812 o, GP28, LEDCOUNT, ledBuf%()
+END SUB
+
+SUB LED_UpdateTurnLights
+  IF IsMyTurn%() THEN
+    LED_AllGreen
+  ELSE
+    LED_AllOff
+  ENDIF
+END SUB
 
 SUB EnsureWifiAndBroadcasts()
   ' Start Wi-Fi if not already connected; wait up to ~6s
@@ -170,6 +195,7 @@ SUB NetInit()
 
   pairedDone% = 0
   StatusHUD("NetInit")
+  LED_AllOff
 END SUB
 
 
@@ -228,6 +254,11 @@ SUB SendBoard(nextTurn$)
   UdpBroadcast "BOARD," + nextTurn$ + "," + s$ + "," + STR$(seq%)
 END SUB
 
+SUB SendGameOver(winner$)
+  seq% = seq% + 1
+  UdpBroadcast "GAMEOVER," + winner$ + "," + STR$(seq%)
+END SUB
+
 SUB SplitCSVInto(s$)
   LOCAL p%, q%, t$, idx%, lim%
   lim% = RX_MAX%
@@ -258,12 +289,6 @@ SUB SplitCSVInto(s$)
 END SUB
 
 
-
-
-
-
-
-
 SUB HandlePacket(pkt$)
   LOCAL n%, tag$, thisSeq%, nextTurn$, otherRole$, otherId$
   IF pkt$ = "" THEN EXIT SUB
@@ -282,9 +307,7 @@ SUB HandlePacket(pkt$)
         otherRole$ = UCASE$(rxParts$(2))
         otherId$   = rxParts$(3)
         IF otherId$ = gameId$ THEN EXIT SUB
-
         peerSeen% = 1
-
         IF myRole$ = "" THEN
           IF otherRole$ = "WHITE" THEN
             myRole$ = "BROWN" : screenFlipped = 1
@@ -349,6 +372,7 @@ SUB HandlePacket(pkt$)
           ApplyDice UCASE$(rxParts$(2)), VAL(rxParts$(3)), VAL(rxParts$(4))
         ENDIF
       ENDIF
+      
     CASE "BOARD"
       ' BOARD,<nextTurn>,<24 pts>,<whiteBar>,<blackBar>,<whiteOff>,<blackOff>,<seq>
       IF n% >= 31 THEN
@@ -358,6 +382,16 @@ SUB HandlePacket(pkt$)
           ApplyBoard1Based
         ENDIF
       ENDIF
+
+    CASE "GAMEOVER"
+      IF n% >= 3 THEN
+        thisSeq% = VAL(rxParts$(3))
+        IF thisSeq% > lastSeq% THEN
+          lastSeq% = thisSeq%
+          ApplyGameOver UCASE$(rxParts$(2))
+        ENDIF
+      ENDIF
+
   END SELECT
 END SUB
 
@@ -523,6 +557,7 @@ SUB AnimateOpeningAndApply(wd%, bd%)
   canRoll    = 0
 
   RedrawAll
+  LED_UpdateTurnLights
 END SUB
 
 FUNCTION IsMyTurn%()
@@ -1013,6 +1048,7 @@ SUB EndTurn
 
   RedrawAll
   BuildValidPoints pieces(), validPoints(), turnIsWhite
+  LED_UpdateTurnLights
 END SUB
 
 ' === Bar-Off Subroutine ===
@@ -1214,10 +1250,17 @@ SUB bearOff
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   
   IF whiteOff = 15 OR blackOff = 15 THEN
-    gameOver
-    END
+    LOCAL winner$
+    IF whiteOff = 15 THEN
+      winner$ = "WHITE"
+    ELSE
+      winner$ = "BROWN"
+    ENDIF
+    SendGameOver winner$
+    ApplyGameOver winner$
+    RETURN
   ENDIF
-  
+ 
   RETURN
 
 invalidOff:
@@ -1225,11 +1268,6 @@ invalidOff:
     DrawCursor cursorIndex, 1: PAUSE 100
     DrawCursor cursorIndex, 0: PAUSE 100
   NEXT
-END SUB
-
-SUB gameOver
-  CLS
-  PRINT "YOU WIN"
 END SUB
 
 ' === Draw pip layout for a large die ===
@@ -1394,7 +1432,37 @@ SUB ApplyBoard1Based
 
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   RedrawAll
+  LED_UpdateTurnLights
 END SUB
+
+SUB ApplyGameOver(winner$)
+  gameOver%  = 1
+  gameWinner$ = UCASE$(winner$)
+
+  COLOR bgColor, bgColor
+  CLS
+  COLOR RGB(255,255,255), bgColor
+
+  IF myRole$ = "WHITE" THEN
+    IF gameWinner$ = "WHITE" THEN
+      PRINT "YOU WIN"
+    ELSE
+      PRINT "YOU LOSE"
+    ENDIF
+  ELSE
+    IF gameWinner$ = "BROWN" THEN
+      PRINT "YOU WIN"
+    ELSE
+      PRINT "YOU LOSE"
+    ENDIF
+  ENDIF
+
+  canRoll    = 0
+  doubleFlag = 0
+  movesLeft  = 0
+  m1 = 0 : m2 = 0
+END SUB
+
 
 ' === Coordinate helpers =====================================================
 FUNCTION FX(x)
@@ -1532,6 +1600,13 @@ DO
     k$ = INKEY$: IF k$ <> "" THEN k$ = ""
     CONTINUE DO
   END IF
+
+  IF gameOver% THEN
+    PAUSE 50
+    k$ = INKEY$: IF k$ <> "" THEN k$ = ""
+    CONTINUE DO
+  END IF
+
   
   k$ = INKEY$
   
@@ -1623,4 +1698,3 @@ DO
   StatusHUD("")
 LOOP
 ' ===========================================================================
-

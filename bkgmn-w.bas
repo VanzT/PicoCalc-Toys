@@ -186,28 +186,21 @@ SUB NetInit()
   peerSeen%   = 0
   seq%        = 1
   lastSeq%    = 0
-
   tStart%     = NowMs%()
   tLastHello% = 0
-
   hudHideAt%  = -1
   hudHidden%  = 0
-
   pairedDone% = 0
   StatusHUD("NetInit")
   LED_AllOff
 END SUB
 
-
-
 SUB OnUDP
   LOCAL a$, m$
   a$ = MM.ADDRESS$
   m$ = MM.MESSAGE$
-
   ' Ignore our own traffic
   IF a$ = MM.INFO(IP ADDRESS) THEN EXIT SUB
-
   lastPeer$ = a$
   peerSeen% = 1
   StatusHUD("RX:" + LEFT$(m$, 5))   ' quick visual ping
@@ -220,21 +213,10 @@ SUB UdpBroadcast(msg$)
   WEB UDP SEND bcast255$, PORT%, msg$
 END SUB
 
-'FUNCTION UdpRecvLine$(BYREF from$)
-'  LOCAL r$, rp%
-'  from$ = ""
-'  r$ = ""
-'  WEB UDP RECV FROM from$, rp%, r$
-'  UdpRecvLine$ = r$
-'END FUNCTION
-
-
-
 SUB SendHello(role$)
   ' Blast both broadcasts for discovery, every time
   UdpBroadcast "HELLO," + role$ + "," + gameId$
 END SUB
-
 
 SUB SendOpen1(role$, val%)
   seq% = seq% + 1
@@ -262,11 +244,9 @@ END SUB
 SUB SplitCSVInto(s$)
   LOCAL p%, q%, t$, idx%, lim%
   lim% = RX_MAX%
-
   ' clear previous tokens (use 1..lim%)
   FOR idx% = 1 TO lim%: rxParts$(idx%) = "": NEXT
   rxCount% = 0
-
   idx% = 1
   p% = 1
   DO
@@ -276,32 +256,25 @@ SUB SplitCSVInto(s$)
     ELSE
       t$ = MID$(s$, p%, q% - p%)
     ENDIF
-
     IF idx% <= lim% THEN
       rxParts$(idx%) = t$
       rxCount% = idx%          ' count = last index written
     ENDIF
-
     IF q% = 0 THEN EXIT DO
     idx% = idx% + 1
     p%   = q% + 1
   LOOP
 END SUB
 
-
 SUB HandlePacket(pkt$)
   LOCAL n%, tag$, thisSeq%, nextTurn$, otherRole$, otherId$
   IF pkt$ = "" THEN EXIT SUB
   IF INSTR(pkt$, ",") = 0 THEN EXIT SUB
-
   SplitCSVInto pkt$
   n% = rxCount%            ' 1-based count
   IF n% < 1 THEN EXIT SUB
-
   tag$ = UCASE$(rxParts$(1))
-
   SELECT CASE tag$
-
     CASE "HELLO"
       IF n% >= 3 THEN
         otherRole$ = UCASE$(rxParts$(2))
@@ -337,7 +310,6 @@ SUB HandlePacket(pkt$)
             ENDIF
           ENDIF
         ENDIF
-
         ' paired when roles are complementary
         IF myRole$ <> "" AND otherRole$ <> "" AND myRole$ <> otherRole$ THEN
           IF started% = 0 THEN
@@ -404,14 +376,12 @@ SUB NetPoll()
     ' listen (no sending, no role assignment)
     'pkt$ = UdpRecvLine$(from$)
     'IF pkt$ <> "" THEN HandlePacket pkt$
-
     ' after 5s of silence, claim WHITE and start advertising
     IF now% - tStart% > HANDSHAKE_LISTEN_MS% THEN
       myRole$ = "WHITE"
       screenFlipped = 0
       tLastHello% = 0         ' force immediate HELLO on next block
     ENDIF
-
     StatusHUD("Listening...")
     EXIT SUB
   ENDIF
@@ -436,7 +406,6 @@ SUB NetPoll()
     EXIT SUB
   END IF
 
-
   ' --- Opening exchange: symmetric one-die-per-side until not a tie ---
   IF started% AND openingDone% = 0 THEN
     ' Ensure our local single die is chosen & sent (once), then resend every 1s until both received.
@@ -457,7 +426,6 @@ SUB NetPoll()
         SendOpen1 "BROWN", openB% : tLastOpen% = NowMs%()
       ENDIF
     ENDIF
-
     ' If we have both values, resolve tie or finish.
     IF haveW% AND haveB% THEN
       IF openW% = openB% THEN
@@ -470,37 +438,29 @@ SUB NetPoll()
         ' canRoll stays 0; the winner will move immediately using m1/m2 we set.
       ENDIF
     ENDIF
-
     ' While opening not done, skip normal play path this tick.
     EXIT SUB
   END IF
 
-  ' --- Phase 3: normal play ---
-  'pkt$ = UdpRecvLine$(from$)
-  'IF pkt$ <> "" THEN HandlePacket pkt$
 END SUB
 
 SUB AnimateOpeningAndApply(wd%, bd%)
   ' wd% is WHITEs die, bd% is BROWNs die
 
-  ' --- All locals must be declared up-front in MMBasic ---
   LOCAL size, corner, y, xB, xW
   LOCAL i, rolls, prevBD, prevWD
   LOCAL brownFill, whiteFill, pipW, pipB
   LOCAL winIsWhite%, b
   LOCAL rB, rW
-
   size      = 96
   corner    = size \ 8
   y         = (H - size) \ 2
   xB        = (W \ 4) - (size \ 2)
   xW        = (3 * W \ 4) - (size \ 2)
-
   brownFill = RGB(100,60,20)
   whiteFill = RGB(240,240,220)
   pipB      = RGB(255,255,255)
   pipW      = RGB(0,0,0)
-
   COLOR bgColor, bgColor
   CLS
   RBOX xB, y, size, size, corner, RGB(0,0,0), brownFill
@@ -550,12 +510,10 @@ SUB AnimateOpeningAndApply(wd%, bd%)
     turnIsWhite = 0
     d1 = bd% : d2 = wd%
   ENDIF
-
   m1 = d1 : m2 = d2
   doubleFlag = 0
   movesLeft  = 2
   canRoll    = 0
-
   RedrawAll
   LED_UpdateTurnLights
 END SUB
@@ -718,15 +676,12 @@ END SUB
 ' === Draw the borne off pieces inside that same tray ===
 SUB DrawOffTrayPieces
   LOCAL trayX, pieceH, i, rectX, rectY, fillCol, count
-
   IF screenFlipped THEN
     trayX = W - (X_OFFSET + 12 * POINT_W + BAR_W + TRAY_W)
   ELSE
     trayX = X_OFFSET + 12 * POINT_W + BAR_W
   ENDIF
-
   pieceH = INT((H/2) / 15)
-
   IF NOT screenFlipped THEN
     count = whiteOff: fillCol = RGB(240,240,220)
     FOR i = 1 TO count
@@ -734,7 +689,6 @@ SUB DrawOffTrayPieces
       rectY = H - i * pieceH
       RBOX rectX, rectY, TRAY_W - 2, pieceH, 0, , fillCol
     NEXT
-
     count = blackOff: fillCol = RGB(100,60,20)
     FOR i = 1 TO count
       rectX = trayX + 1
@@ -748,7 +702,6 @@ SUB DrawOffTrayPieces
       rectY = (i - 1) * pieceH
       RBOX rectX, rectY, TRAY_W - 2, pieceH, 0, , fillCol
     NEXT
-
     count = blackOff: fillCol = RGB(100,60,20)
     FOR i = 1 TO count
       rectX = trayX + 1
@@ -810,14 +763,11 @@ SUB DrawCheckers(p())
   LOCAL i, j, num, col, row, colVis, xx, yy
   LOCAL border, fill
   LOCAL normalSpacing, skewAmt, baseIdx, baseY
-
   normalSpacing = PIECE_R * 2 + 2
   skewAmt       = 4
-
   FOR i = 0 TO 23
     num = ABS(p(i))
     IF num = 0 THEN GOTO SkipDraw
-
     IF p(i) > 0 THEN
       border = RGB(0,0,0)
       fill   = RGB(240,240,220)
@@ -825,7 +775,6 @@ SUB DrawCheckers(p())
       border = RGB(0,0,20)
       fill   = RGB(100,60,20)
     ENDIF
-
     row = i \ 12
     col = i MOD 12
     IF row = 0 THEN
@@ -833,9 +782,7 @@ SUB DrawCheckers(p())
     ELSE
       colVis = col
     ENDIF
-
     xx = X_OFFSET + colVis * POINT_W + (colVis \ 6) * BAR_W + POINT_W / 2
-
     FOR j = 0 TO num - 1
       IF j < 5 THEN
         IF row = 0 THEN
@@ -853,7 +800,6 @@ SUB DrawCheckers(p())
           yy    = baseY - skewAmt
         ENDIF
       ENDIF
-
       CIRCLE FX(xx), FY(yy), PIECE_R, 1, , border, fill
     NEXT j
 SkipDraw:
@@ -863,11 +809,9 @@ END SUB
 ' === BuildMovePoints Subroutine ===
 SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
   LOCAL i, dist
-
   FOR i = 0 TO 23
     v(i) = 0
     dist = ABS(i - origPick)
-
     IF doubleFlag THEN
       IF movesLeft > 0 THEN
         IF ((isWhite AND i > origPick) OR (NOT isWhite AND i < origPick)) AND dist = dieVal THEN
@@ -880,7 +824,6 @@ SUB BuildMovePoints(p(), v(), isWhite, origPick, die1, die2)
         IF die2 > 0 AND dist = die2 THEN v(i) = 1
       ENDIF
     ENDIF
-
     IF v(i) = 1 THEN
       IF isWhite THEN
         IF p(i) < -1 THEN v(i) = 0
@@ -935,7 +878,6 @@ SUB PickDrop
       NEXT
       EXIT SUB
     ENDIF
-
     IF cursorIndex = origPick THEN
       IF turnIsWhite THEN
         pieces(origPick) = pieces(origPick) + 1
@@ -947,7 +889,6 @@ SUB PickDrop
       DrawCursor cursorIndex, 0
       EXIT SUB
     ENDIF
-
     IF (turnIsWhite AND cursorIndex < origPick) OR (NOT turnIsWhite AND cursorIndex > origPick) THEN
       FOR iFlash = 1 TO 3
         DrawCursor cursorIndex, 1: PAUSE 100
@@ -955,9 +896,7 @@ SUB PickDrop
       NEXT
       EXIT SUB
     ENDIF
-
     dist = ABS(cursorIndex - origPick)
-
     IF doubleFlag THEN
       IF dist = dieVal AND movesLeft > 0 THEN
         usedDie = 0
@@ -986,7 +925,6 @@ SUB PickDrop
         EXIT SUB
       ENDIF
     ENDIF
-
     IF turnIsWhite AND pieces(cursorIndex) < 0 THEN
       blackBar = blackBar + 1: pieces(cursorIndex) = 0
     ELSEIF NOT turnIsWhite AND pieces(cursorIndex) > 0 THEN
@@ -998,7 +936,6 @@ SUB PickDrop
     ELSE
       pieces(cursorIndex) = pieces(cursorIndex) - 1
     ENDIF
-
     IF NOT doubleFlag THEN
       IF usedDie = 1 THEN 
         m1 = 0 
@@ -1024,19 +961,15 @@ SUB EndTurn
   ELSE
     blackCursor = cursorIndex
   ENDIF
-
   ' DO NOT FLIP: orientation fixed by role
   ' screenFlipped = 1 - screenFlipped  ' removed
-
   turnIsWhite = 1 - turnIsWhite
-
   canRoll = 1
   doubleFlag = 0
   movesLeft  = 0
   m1         = 0
   m2         = 0
   state = 0
-
   ' Send board + endturn
   LOCAL nextTurn$
   IF turnIsWhite THEN
@@ -1045,7 +978,6 @@ SUB EndTurn
     nextTurn$ = "BROWN"
   ENDIF
   SendBoard nextTurn$
-
   RedrawAll
   BuildValidPoints pieces(), validPoints(), turnIsWhite
   LED_UpdateTurnLights
@@ -1056,7 +988,6 @@ SUB BarOff
   LOCAL iFlash, useDie
   BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
   entryPt = cursorIndex
-  
   IF validPoints(entryPt) = 0 THEN
     FOR iFlash = 1 TO 3
       DrawCursor cursorIndex, 1: PAUSE 100
@@ -1064,7 +995,6 @@ SUB BarOff
     NEXT
     EXIT SUB
   ENDIF
-  
   IF turnIsWhite THEN
     IF entryPt = (m1 - 1) THEN
       useDie = 1
@@ -1090,19 +1020,16 @@ SUB BarOff
       EXIT SUB
     ENDIF
   ENDIF
-
   IF turnIsWhite AND pieces(entryPt) < 0 THEN
     blackBar = blackBar + 1: pieces(entryPt) = 0
   ELSEIF NOT turnIsWhite AND pieces(entryPt) > 0 THEN
     whiteBar = whiteBar + 1: pieces(entryPt) = 0
   ENDIF
-
   IF turnIsWhite THEN
     whiteBar = whiteBar - 1: pieces(entryPt) = pieces(entryPt) + 1
   ELSE
     blackBar = blackBar - 1: pieces(entryPt) = pieces(entryPt) - 1
   ENDIF
-
   IF doubleFlag THEN
     IF movesLeft > 0 THEN movesLeft = movesLeft - 1
   ELSE
@@ -1112,7 +1039,6 @@ SUB BarOff
       m2 = 0 
     ENDIF
   ENDIF
-
   hasPicked = 0
   DrawCursor cursorIndex, 1
   RedrawAll
@@ -1245,10 +1171,8 @@ SUB bearOff
     pieces(cursorIndex) = pieces(cursorIndex) + 1
     blackOff = blackOff + 1
   ENDIF
-
   RedrawAll
   BuildValidPoints pieces(), validPoints(), turnIsWhite
-  
   IF whiteOff = 15 OR blackOff = 15 THEN
     LOCAL winner$
     IF whiteOff = 15 THEN
@@ -1260,7 +1184,6 @@ SUB bearOff
     ApplyGameOver winner$
     RETURN
   ENDIF
- 
   RETURN
 
 invalidOff:
@@ -1348,8 +1271,6 @@ SUB ClearLargePips(x, y, size, val, fillCol)
       CIRCLE x+size-off,   y+size-off,   r+1, , , fillCol, fillCol
   END SELECT
 END SUB
-
-
 
 ' === RollDice Subroutine (broadcast) =======================================
 SUB RollDice
@@ -1456,7 +1377,6 @@ SUB ApplyGameOver(winner$)
       PRINT "YOU LOSE"
     ENDIF
   ENDIF
-
   canRoll    = 0
   doubleFlag = 0
   movesLeft  = 0
@@ -1484,9 +1404,7 @@ END FUNCTION
 ' === Navigate Cursor Subroutine (unchanged logic) ==========================
 SUB NavigateCursor
   LOCAL newIdx, row, col, colVis, keyChar$
-
   DrawCursor cursorIndex, 1
-
   row = cursorIndex \ 12
   col = cursorIndex MOD 12
   IF row = 0 THEN
@@ -1494,7 +1412,6 @@ SUB NavigateCursor
   ELSE
     colVis = col
   ENDIF
-
   keyChar$ = k$
   IF NOT turnIsWhite THEN
     SELECT CASE keyChar$
@@ -1584,7 +1501,6 @@ DO WHILE validPoints(cursorIndex) = 0 AND i < 24
 LOOP
 ' (If none are valid, cursorIndex stays 0 — harmless)
 
-
 ' === Main Loop ===
 DO
   NetPoll
@@ -1606,7 +1522,6 @@ DO
     k$ = INKEY$: IF k$ <> "" THEN k$ = ""
     CONTINUE DO
   END IF
-
   
   k$ = INKEY$
   
@@ -1617,7 +1532,6 @@ DO
     PAUSE 10
     CONTINUE DO
   END IF
-
   
   IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
     hasPicked = 1
@@ -1641,7 +1555,6 @@ DO
           cursorIndex = blackCursor
         ENDIF
       ENDIF 
-
     CASE "T","t"
       IF canRoll = 0 THEN
         IF doubleFlag AND movesLeft = 0 THEN
@@ -1650,7 +1563,6 @@ DO
           EXIT SELECT
         END IF
         legalExists = 0
-
         IF (turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0) THEN
           BuildReEntryPoints pieces(), validPoints(), turnIsWhite, m1, m2
           FOR i = 0 TO 23
@@ -1671,23 +1583,19 @@ DO
             ENDIF
           NEXT
         ENDIF
-
         IF legalExists = 0 OR (doubleFlag AND movesLeft = 0) OR (NOT doubleFlag AND m1 = 0 AND m2 = 0) THEN
           DrawCursor cursorIndex, 1
           EndTurn
         ENDIF
       ENDIF
-
     CASE "B", "b"
       IF canRoll = 0 THEN
         bearOff
       ENDIF
-
     CASE CHR$(130), CHR$(128), CHR$(131), CHR$(129) ' left/up/right/down
       IF canRoll = 0 AND ((doubleFlag AND movesLeft > 0) OR (NOT doubleFlag AND (m1 <> 0 OR m2 <> 0))) THEN
         NavigateCursor
       ENDIF
-
     CASE CHR$(13), CHR$(10)
       IF canRoll = 0 AND ((turnIsWhite AND whiteBar > 0) OR (NOT turnIsWhite AND blackBar > 0)) THEN
         BarOff

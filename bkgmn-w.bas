@@ -1518,8 +1518,14 @@ DO
   END IF
 
   IF gameOver% THEN
-    PAUSE 50
-    k$ = INKEY$: IF k$ <> "" THEN k$ = ""
+    k$ = INKEY$
+    IF k$ <> "" THEN
+      LED_AllOff
+      ' Optional but nice: close UDP socket before chaining
+      WEB UDP CLOSE
+      CHAIN "B:menu.bas"
+    ENDIF
+    PAUSE 20
     CONTINUE DO
   END IF
   

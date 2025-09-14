@@ -27,6 +27,7 @@ DIM turn% = 1         ' 1 = Black, 2 = White
 DIM myColor% = 0      ' 1 = Black, 2 = White (assigned after handshake)
 DIM peer$ = ""
 DIM pieceCol!
+DIM x%, y%, legalMove%
 
 ' === SUB: Count pieces on board ===
 SUB count_score(BYREF b%, BYREF w%)
@@ -46,10 +47,10 @@ END SUB
 SUB draw_score_display
   LOCAL b%, w%
   count_score b%, w%
-  BOX 0, 0, 319, 19, 0, BOARD_COLOR%
-  COLOR RGB(255,255,255)
+  COLOR RGB(255,255,255), BOARD_COLOR%
   PRINT @(10, 4) "Black: " + STR$(b%) + "  White: " + STR$(w%)
 END SUB
+
 
 ' === SUB: Draw the green board and grid ===
 SUB draw_board
@@ -95,6 +96,20 @@ FUNCTION is_legal_move(col%, row%, player%) AS INTEGER
   NEXT dx%
   is_legal_move = 0
 END FUNCTION
+
+FUNCTION has_legal_moves(player%) AS INTEGER
+  LOCAL x%, y%
+  FOR x% = 1 TO BOARD_SIZE%
+    FOR y% = 1 TO BOARD_SIZE%
+      IF board%(x%, y%) = 0 AND is_legal_move(x%, y%, player%) THEN
+        has_legal_moves = 1
+        EXIT FUNCTION
+      END IF
+    NEXT y%
+  NEXT x%
+  has_legal_moves = 0
+END FUNCTION
+
 
 ' === SUB: Check game over and show winner ===
 SUB check_game_over
@@ -205,6 +220,9 @@ SUB OnUDP
       draw_score_display
       turn% = 3 - turn%
       check_game_over
+    ELSEIF t$ = "PASS" THEN
+      turn% = 3 - turn%
+      check_game_over
     END IF
   END IF
 END SUB
@@ -244,12 +262,12 @@ LOOP
 ' === Setup board ===
 CLS
 draw_board
+draw_score_display
 board%(4,4) = 2 : board%(5,5) = 2 : board%(4,5) = 1 : board%(5,4) = 1
 draw_piece 4, 4, WHITE_PIECE_COLOR%
 draw_piece 5, 5, WHITE_PIECE_COLOR%
 draw_piece 4, 5, BLACK_PIECE_COLOR%
 draw_piece 5, 4, BLACK_PIECE_COLOR%
-draw_score_display
 draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
 
 ' === Main Loop ===
@@ -275,6 +293,37 @@ DO
           WEB UDP SEND peer$, PORT%, "MOVE " + STR$(sel_col%) + "," + STR$(sel_row%)
         END IF
       END IF
+    CASE 112  ' F1 key – try to pass
+      legalMove% = 0
+      FOR x% = 1 TO BOARD_SIZE%
+        FOR y% = 1 TO BOARD_SIZE%
+          IF is_legal_move(x%, y%, turn%) THEN
+            legalMove% = 1
+            EXIT FOR
+          END IF
+        NEXT y%
+        IF legalMove% THEN EXIT FOR
+      NEXT x%
+      IF legalMove% = 0 THEN
+        turn% = 3 - turn%
+      ELSE
+        COLOR RGB(255,255,0), BOARD_COLOR%
+        PRINT @(20, 300) "Cannot pass: legal moves available";
+        PAUSE 1000
+
+        ' Clear message by redrawing everything
+        draw_board
+        FOR x% = 1 TO BOARD_SIZE%
+          FOR y% = 1 TO BOARD_SIZE%
+            SELECT CASE board%(x%, y%)
+              CASE 1: draw_piece x%, y%, BLACK_PIECE_COLOR%
+              CASE 2: draw_piece x%, y%, WHITE_PIECE_COLOR%
+            END SELECT
+          NEXT y%
+        NEXT x%
+        draw_score_display
+      END IF
+
   END SELECT
   draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
 LOOP

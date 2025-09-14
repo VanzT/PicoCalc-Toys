@@ -29,6 +29,30 @@ DIM peer$ = ""
 DIM pieceCol!
 DIM x%, y%, legalMove%
 
+CONST LEDCOUNT = 8
+DIM INTEGER ledBuf%(LEDCOUNT)
+
+SUB LED_AllOff
+  LOCAL i%
+  FOR i% = 1 TO LEDCOUNT: ledBuf%(i%) = 0: NEXT
+  BITBANG ws2812 o, GP28, LEDCOUNT, ledBuf%()
+END SUB
+
+SUB LED_AllGreen
+  LOCAL i%
+  FOR i% = 1 TO LEDCOUNT: ledBuf%(i%) = &H00FF00: NEXT   ' RGB packed
+  BITBANG ws2812 o, GP28, LEDCOUNT, ledBuf%()
+END SUB
+
+SUB LED_UpdateTurnLights
+  IF IsMyTurn%() THEN
+    LED_AllGreen
+  ELSE
+    LED_AllOff
+  ENDIF
+END SUB
+
+
 ' === SUB: Count pieces on board ===
 SUB count_score(BYREF b%, BYREF w%)
   LOCAL x%, y%
@@ -45,10 +69,20 @@ END SUB
 
 ' === SUB: Display the score ===
 SUB draw_score_display
-  LOCAL b%, w%
+  LOCAL b%, w%, bLabel$, wLabel$
   count_score b%, w%
+  
+  ' Determine which player is "me" and show in UPPERCASE
+  IF myColor% = 1 THEN
+    bLabel$ = "BLACK": wLabel$ = "White"
+  ELSEIF myColor% = 2 THEN
+    bLabel$ = "Black": wLabel$ = "WHITE"
+  ELSE
+    bLabel$ = "Black": wLabel$ = "White"
+  END IF
+
   COLOR RGB(255,255,255), BOARD_COLOR%
-  PRINT @(10, 4) "Black: " + STR$(b%) + "  White: " + STR$(w%)
+  PRINT @(10, 4) bLabel$ + ": " + STR$(b%) + "  " + wLabel$ + ": " + STR$(w%)
 END SUB
 
 
@@ -61,6 +95,11 @@ SUB draw_board
     LINE 0, i%*SQUARE_SIZE%, BOARD_SIZE%*SQUARE_SIZE%, i%*SQUARE_SIZE%, 1, LINE_COLOR%
   NEXT i%
 END SUB
+
+FUNCTION IsMyTurn%()
+  IsMyTurn% = (myColor% = turn%)
+END FUNCTION
+
 
 ' === FUNCTION: Check if a move is legal ===
 FUNCTION is_legal_move(col%, row%, player%) AS INTEGER
@@ -138,6 +177,7 @@ SUB check_game_over
     END IF
     PRINT @(20, 240) "Press any key to return to menu..."
     DO WHILE INKEY$ = "": PAUSE 50: LOOP
+    LED_AllOff
     CHAIN "b:menu.bas"
   END IF
 END SUB
@@ -205,10 +245,30 @@ SUB OnUDP
   t$ = MM.MESSAGE$
   peer$ = MM.ADDRESS$
   IF t$ = "HELLO" AND myColor% = 0 THEN
-    myColor% = 2
-    WEB UDP SEND peer$, PORT%, "ACK"
-  ELSEIF t$ = "ACK" AND myColor% = 0 THEN
-    myColor% = 1
+    ' Randomly assign the first player's color
+    IF RND > 0.5 THEN
+      myColor% = 1
+      turn% = 1
+    ELSE
+      myColor% = 2
+      turn% = 2
+    ENDIF
+    LED_UpdateTurnLights
+    WEB UDP SEND peer$, PORT%, "ACK " + STR$(myColor%)
+
+
+  ELSEIF LEFT$(t$, 3) = "ACK" AND myColor% = 0 THEN
+    ' Parse assigned color from peer
+    IF LEN(t$) > 4 THEN
+      myColor% = 3 - VAL(MID$(t$, 5))  ' Choose opposite color
+      turn% = VAL(MID$(t$, 5))         ' Same as peers color
+    ELSE
+      myColor% = 1                     ' Fallback if no color sent
+      turn% = 1
+    ENDIF
+    LED_UpdateTurnLights
+
+
   ELSEIF LEFT$(t$, 4) = "MOVE" THEN
     x% = VAL(MID$(t$, 6, 1))
     y% = VAL(MID$(t$, 8, 1))
@@ -219,9 +279,11 @@ SUB OnUDP
       flip_pieces x%, y%, turn%
       draw_score_display
       turn% = 3 - turn%
+      LED_UpdateTurnLights
       check_game_over
     ELSEIF t$ = "PASS" THEN
       turn% = 3 - turn%
+      LED_UpdateTurnLights
       check_game_over
     END IF
   END IF
@@ -240,35 +302,40 @@ PRINT @(10, 20) "Othello Wi-Fi Setup"
 PRINT @(10, 50) "My Color: ";
 PRINT @(10, 80) "Peer Address: ";
 PRINT @(10, 110) "Press any key to start when both sides show a peer address."
+
 DO WHILE INKEY$ = ""
   COLOR RGB(255,255,255)
   PRINT @(150, 50);
   IF myColor% = 0 THEN
-    PRINT "Unassigned"
+    PRINT "Unassigned      "
   ELSEIF myColor% = 1 THEN
-    PRINT "Black          "
+    PRINT "Black           "
   ELSE
-    PRINT "White          "
+    PRINT "White           "
   END IF
+
   PRINT @(150, 80);
   IF peer$ = "" THEN
-    PRINT "Waiting..."
+    PRINT "Waiting...      "
   ELSE
     PRINT peer$
   END IF
+
   PAUSE 250
 LOOP
+
 
 ' === Setup board ===
 CLS
 draw_board
-draw_score_display
 board%(4,4) = 2 : board%(5,5) = 2 : board%(4,5) = 1 : board%(5,4) = 1
 draw_piece 4, 4, WHITE_PIECE_COLOR%
 draw_piece 5, 5, WHITE_PIECE_COLOR%
 draw_piece 4, 5, BLACK_PIECE_COLOR%
 draw_piece 5, 4, BLACK_PIECE_COLOR%
+draw_score_display
 draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+LED_UpdateTurnLights
 
 ' === Main Loop ===
 DO
@@ -288,6 +355,7 @@ DO
         flip_pieces sel_col%, sel_row%, turn%
         draw_score_display
         turn% = 3 - turn%
+        LED_UpdateTurnLights
         check_game_over
         IF peer$ <> "" THEN
           WEB UDP SEND peer$, PORT%, "MOVE " + STR$(sel_col%) + "," + STR$(sel_row%)
@@ -306,6 +374,7 @@ DO
       NEXT x%
       IF legalMove% = 0 THEN
         turn% = 3 - turn%
+        LED_UpdateTurnLights
       ELSE
         COLOR RGB(255,255,0), BOARD_COLOR%
         PRINT @(20, 300) "Cannot pass: legal moves available";

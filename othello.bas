@@ -38,6 +38,96 @@ SUB draw_board
   NEXT i%
 END SUB
 
+' === FUNCTION: Check if a move is legal ===
+FUNCTION is_legal_move(col%, row%, player%) AS INTEGER
+  LOCAL dx%, dy%, x%, y%, opponent%, found%
+
+  IF board%(col%, row%) <> 0 THEN
+    is_legal_move = 0
+    EXIT FUNCTION
+  END IF
+
+  opponent% = 3 - player%
+
+  FOR dx% = -1 TO 1
+    FOR dy% = -1 TO 1
+      IF dx% = 0 AND dy% = 0 THEN CONTINUE FOR
+
+      x% = col% + dx%
+      y% = row% + dy%
+      found% = 0
+
+      DO
+        IF x% < 1 OR x% > BOARD_SIZE% OR y% < 1 OR y% > BOARD_SIZE% THEN
+          EXIT DO
+        ELSEIF board%(x%, y%) = opponent% THEN
+          found% = 1
+        ELSEIF board%(x%, y%) = player% THEN
+          IF found% THEN
+            is_legal_move = 1
+            EXIT FUNCTION
+          ELSE
+            EXIT DO
+          END IF
+        ELSE
+          EXIT DO
+        END IF
+        x% = x% + dx%
+        y% = y% + dy%
+      LOOP
+    NEXT dy%
+  NEXT dx%
+
+  is_legal_move = 0
+END FUNCTION
+
+SUB check_game_over
+  LOCAL legal1%, legal2%, x%, y%
+  legal1% = 0
+  legal2% = 0
+
+  FOR x% = 1 TO BOARD_SIZE%
+    FOR y% = 1 TO BOARD_SIZE%
+      IF board%(x%, y%) = 0 THEN
+        IF is_legal_move(x%, y%, 1) THEN legal1% = 1
+        IF is_legal_move(x%, y%, 2) THEN legal2% = 1
+      END IF
+    NEXT y%
+  NEXT x%
+
+  IF legal1% = 0 AND legal2% = 0 THEN
+    ' Game Over
+    LOCAL b%, w%
+    b% = 0
+    w% = 0
+    FOR x% = 1 TO BOARD_SIZE%
+      FOR y% = 1 TO BOARD_SIZE%
+        IF board%(x%, y%) = 1 THEN b% = b% + 1
+        IF board%(x%, y%) = 2 THEN w% = w% + 1
+      NEXT y%
+    NEXT x%
+
+    ' Show results (overlay text)
+    COLOR RGB(255,255,255)
+    PRINT @(20, 140) "Game Over"
+    PRINT @(20, 170) "Black: "; b%; "   White: "; w%
+
+    IF b% > w% THEN
+      PRINT @(20, 200) "Black wins!"
+    ELSEIF w% > b% THEN
+      PRINT @(20, 200) "White wins!"
+    ELSE
+      PRINT @(20, 200) "It's a tie!"
+    END IF
+
+    PRINT @(20, 240) "Press any key to return to menu..."
+    DO WHILE INKEY$ = "": PAUSE 50: LOOP
+
+    CHAIN "b:menu.bas"
+  END IF
+END SUB
+
+
 ' === SUB: Draw one piece (filled circle) ===
 SUB draw_piece(col%, row%, pieceCol!)
   LOCAL x%, y%, r%
@@ -113,7 +203,7 @@ SUB OnUDP
   ELSEIF LEFT$(t$, 4) = "MOVE" THEN
     x% = VAL(MID$(t$, 6, 1))
     y% = VAL(MID$(t$, 8, 1))
-    IF board%(x%, y%) = 0 THEN
+    IF is_legal_move(x%, y%, turn%) THEN
       board%(x%, y%) = turn%
       IF turn% = 1 THEN
         pieceCol! = BLACK_PIECE_COLOR%
@@ -122,10 +212,36 @@ SUB OnUDP
       END IF
       draw_piece x%, y%, pieceCol!
       flip_pieces x%, y%, turn%
+      draw_score_display
       turn% = 3 - turn%
+      check_game_over
     END IF
   END IF
 END SUB
+
+' === SUB: Display the score ===
+SUB draw_score_display
+  LOCAL x%, y%, b%, w%
+  b% = 0 : w% = 0
+
+  FOR x% = 1 TO BOARD_SIZE%
+    FOR y% = 1 TO BOARD_SIZE%
+      SELECT CASE board%(x%, y%)
+        CASE 1: b% = b% + 1
+        CASE 2: w% = w% + 1
+      END SELECT
+    NEXT y%
+  NEXT x%
+
+  ' Clear top bar area
+  BOX 0, 0, 319, 19, 0, BOARD_COLOR%
+
+  ' Print score text in white
+  COLOR RGB(255,255,255)
+  PRINT @(10, 4) "Black: " + STR$(b%) + "  White: " + STR$(w%)
+END SUB
+
+
 
 ' === INIT: Open UDP port and trigger ===
 WEB UDP OPEN SERVER PORT PORT%
@@ -175,7 +291,9 @@ board%(5,5) = 2
 board%(4,5) = 1
 board%(5,4) = 1
 
+draw_score_display
 draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+
 
 ' === MAIN LOOP ===
 DO
@@ -193,7 +311,7 @@ DO
     CASE 130: IF sel_col% > 1 THEN sel_col% = sel_col% - 1
     CASE 131: IF sel_col% < BOARD_SIZE% THEN sel_col% = sel_col% + 1
     CASE 13
-      IF myColor% = turn% AND board%(sel_col%, sel_row%) = 0 THEN
+      IF myColor% = turn% AND is_legal_move(sel_col%, sel_row%, turn%) THEN
         board%(sel_col%, sel_row%) = turn%
         IF turn% = 1 THEN
           pieceCol! = BLACK_PIECE_COLOR%
@@ -202,7 +320,9 @@ DO
         END IF
         draw_piece sel_col%, sel_row%, pieceCol!
         flip_pieces sel_col%, sel_row%, turn%
+        draw_score_display
         turn% = 3 - turn%
+        check_game_over
         IF peer$ <> "" THEN
           WEB UDP SEND peer$, PORT%, "MOVE " + STR$(sel_col%) + "," + STR$(sel_row%)
         END IF

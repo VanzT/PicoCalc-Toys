@@ -1,6 +1,6 @@
 ' Othello Wi-Fi Multiplayer (PicoCalc)
 ' Author: Vance Thompson
-' Version: 1.3
+' Version: 1.4
 ' Date: 2025-09-13
 
 OPTION BASE 1
@@ -28,6 +28,29 @@ DIM myColor% = 0      ' 1 = Black, 2 = White (assigned after handshake)
 DIM peer$ = ""
 DIM pieceCol!
 
+' === SUB: Count pieces on board ===
+SUB count_score(BYREF b%, BYREF w%)
+  LOCAL x%, y%
+  b% = 0 : w% = 0
+  FOR x% = 1 TO BOARD_SIZE%
+    FOR y% = 1 TO BOARD_SIZE%
+      SELECT CASE board%(x%, y%)
+        CASE 1: b% = b% + 1
+        CASE 2: w% = w% + 1
+      END SELECT
+    NEXT y%
+  NEXT x%
+END SUB
+
+' === SUB: Display the score ===
+SUB draw_score_display
+  LOCAL b%, w%
+  count_score b%, w%
+  BOX 0, 0, 319, 19, 0, BOARD_COLOR%
+  COLOR RGB(255,255,255)
+  PRINT @(10, 4) "Black: " + STR$(b%) + "  White: " + STR$(w%)
+END SUB
+
 ' === SUB: Draw the green board and grid ===
 SUB draw_board
   LOCAL i%
@@ -41,26 +64,20 @@ END SUB
 ' === FUNCTION: Check if a move is legal ===
 FUNCTION is_legal_move(col%, row%, player%) AS INTEGER
   LOCAL dx%, dy%, x%, y%, opponent%, found%
-
   IF board%(col%, row%) <> 0 THEN
     is_legal_move = 0
     EXIT FUNCTION
   END IF
-
   opponent% = 3 - player%
-
   FOR dx% = -1 TO 1
     FOR dy% = -1 TO 1
       IF dx% = 0 AND dy% = 0 THEN CONTINUE FOR
-
       x% = col% + dx%
       y% = row% + dy%
       found% = 0
-
       DO
-        IF x% < 1 OR x% > BOARD_SIZE% OR y% < 1 OR y% > BOARD_SIZE% THEN
-          EXIT DO
-        ELSEIF board%(x%, y%) = opponent% THEN
+        IF x% < 1 OR x% > BOARD_SIZE% OR y% < 1 OR y% > BOARD_SIZE% THEN EXIT DO
+        IF board%(x%, y%) = opponent% THEN
           found% = 1
         ELSEIF board%(x%, y%) = player% THEN
           IF found% THEN
@@ -72,20 +89,17 @@ FUNCTION is_legal_move(col%, row%, player%) AS INTEGER
         ELSE
           EXIT DO
         END IF
-        x% = x% + dx%
-        y% = y% + dy%
+        x% = x% + dx% : y% = y% + dy%
       LOOP
     NEXT dy%
   NEXT dx%
-
   is_legal_move = 0
 END FUNCTION
 
+' === SUB: Check game over and show winner ===
 SUB check_game_over
-  LOCAL legal1%, legal2%, x%, y%
-  legal1% = 0
-  legal2% = 0
-
+  LOCAL legal1%, legal2%, x%, y%, b%, w%
+  legal1% = 0 : legal2% = 0
   FOR x% = 1 TO BOARD_SIZE%
     FOR y% = 1 TO BOARD_SIZE%
       IF board%(x%, y%) = 0 THEN
@@ -96,22 +110,10 @@ SUB check_game_over
   NEXT x%
 
   IF legal1% = 0 AND legal2% = 0 THEN
-    ' Game Over
-    LOCAL b%, w%
-    b% = 0
-    w% = 0
-    FOR x% = 1 TO BOARD_SIZE%
-      FOR y% = 1 TO BOARD_SIZE%
-        IF board%(x%, y%) = 1 THEN b% = b% + 1
-        IF board%(x%, y%) = 2 THEN w% = w% + 1
-      NEXT y%
-    NEXT x%
-
-    ' Show results (overlay text)
+    count_score b%, w%
     COLOR RGB(255,255,255)
     PRINT @(20, 140) "Game Over"
     PRINT @(20, 170) "Black: "; b%; "   White: "; w%
-
     IF b% > w% THEN
       PRINT @(20, 200) "Black wins!"
     ELSEIF w% > b% THEN
@@ -119,14 +121,11 @@ SUB check_game_over
     ELSE
       PRINT @(20, 200) "It's a tie!"
     END IF
-
     PRINT @(20, 240) "Press any key to return to menu..."
     DO WHILE INKEY$ = "": PAUSE 50: LOOP
-
     CHAIN "b:menu.bas"
   END IF
 END SUB
-
 
 ' === SUB: Draw one piece (filled circle) ===
 SUB draw_piece(col%, row%, pieceCol!)
@@ -150,16 +149,13 @@ END SUB
 SUB flip_pieces(col%, row%, player%)
   LOCAL dx%, dy%, x%, y%, i%, count%, path%(64, 2), opponent%, done%
   opponent% = 3 - player%
-
   FOR dx% = -1 TO 1
     FOR dy% = -1 TO 1
       IF dx% = 0 AND dy% = 0 THEN CONTINUE FOR
-
       x% = col% + dx%
       y% = row% + dy%
       count% = 0
       done% = 0
-
       DO
         IF x% < 1 OR x% > BOARD_SIZE% OR y% < 1 OR y% > BOARD_SIZE% THEN
           done% = 1
@@ -167,8 +163,7 @@ SUB flip_pieces(col%, row%, player%)
           count% = count% + 1
           path%(count%, 1) = x%
           path%(count%, 2) = y%
-          x% = x% + dx%
-          y% = y% + dy%
+          x% = x% + dx% : y% = y% + dy%
         ELSEIF board%(x%, y%) = player% AND count% > 0 THEN
           IF turn% = 1 THEN
             pieceCol! = BLACK_PIECE_COLOR%
@@ -194,7 +189,6 @@ SUB OnUDP
   LOCAL t$, x%, y%
   t$ = MM.MESSAGE$
   peer$ = MM.ADDRESS$
-
   IF t$ = "HELLO" AND myColor% = 0 THEN
     myColor% = 2
     WEB UDP SEND peer$, PORT%, "ACK"
@@ -205,11 +199,7 @@ SUB OnUDP
     y% = VAL(MID$(t$, 8, 1))
     IF is_legal_move(x%, y%, turn%) THEN
       board%(x%, y%) = turn%
-      IF turn% = 1 THEN
-        pieceCol! = BLACK_PIECE_COLOR%
-      ELSE
-        pieceCol! = WHITE_PIECE_COLOR%
-      END IF
+      IF turn% = 1 THEN pieceCol! = BLACK_PIECE_COLOR% ELSE pieceCol! = WHITE_PIECE_COLOR%
       draw_piece x%, y%, pieceCol!
       flip_pieces x%, y%, turn%
       draw_score_display
@@ -219,46 +209,19 @@ SUB OnUDP
   END IF
 END SUB
 
-' === SUB: Display the score ===
-SUB draw_score_display
-  LOCAL x%, y%, b%, w%
-  b% = 0 : w% = 0
-
-  FOR x% = 1 TO BOARD_SIZE%
-    FOR y% = 1 TO BOARD_SIZE%
-      SELECT CASE board%(x%, y%)
-        CASE 1: b% = b% + 1
-        CASE 2: w% = w% + 1
-      END SELECT
-    NEXT y%
-  NEXT x%
-
-  ' Clear top bar area
-  BOX 0, 0, 319, 19, 0, BOARD_COLOR%
-
-  ' Print score text in white
-  COLOR RGB(255,255,255)
-  PRINT @(10, 4) "Black: " + STR$(b%) + "  White: " + STR$(w%)
-END SUB
-
-
-
-' === INIT: Open UDP port and trigger ===
+' === INIT: Open UDP and handshake ===
 WEB UDP OPEN SERVER PORT PORT%
 WEB UDP INTERRUPT OnUDP
-
-' === INIT: Start Handshake ===
 PAUSE 500
 WEB UDP SEND "255.255.255.255", PORT%, "HELLO"
 
-' === Display Pre-Game HUD ===
+' === Pre-Game HUD ===
 CLS RGB(0,0,0)
 COLOR RGB(255,255,255)
 PRINT @(10, 20) "Othello Wi-Fi Setup"
 PRINT @(10, 50) "My Color: ";
 PRINT @(10, 80) "Peer Address: ";
 PRINT @(10, 110) "Press any key to start when both sides show a peer address."
-
 DO WHILE INKEY$ = ""
   COLOR RGB(255,255,255)
   PRINT @(150, 50);
@@ -278,33 +241,22 @@ DO WHILE INKEY$ = ""
   PAUSE 250
 LOOP
 
+' === Setup board ===
 CLS
-
-' === Board setup ===
 draw_board
+board%(4,4) = 2 : board%(5,5) = 2 : board%(4,5) = 1 : board%(5,4) = 1
 draw_piece 4, 4, WHITE_PIECE_COLOR%
 draw_piece 5, 5, WHITE_PIECE_COLOR%
 draw_piece 4, 5, BLACK_PIECE_COLOR%
 draw_piece 5, 4, BLACK_PIECE_COLOR%
-board%(4,4) = 2
-board%(5,5) = 2
-board%(4,5) = 1
-board%(5,4) = 1
-
 draw_score_display
 draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
 
-
-' === MAIN LOOP ===
+' === Main Loop ===
 DO
   k$ = INKEY$
-  IF k$ = "" THEN
-    PAUSE 20
-    CONTINUE DO
-  END IF
-
+  IF k$ = "" THEN PAUSE 20: CONTINUE DO
   draw_selector sel_col%, sel_row%, ERASE_COLOR%
-
   SELECT CASE ASC(k$)
     CASE 128: IF sel_row% > 1 THEN sel_row% = sel_row% - 1
     CASE 129: IF sel_row% < BOARD_SIZE% THEN sel_row% = sel_row% + 1
@@ -313,11 +265,7 @@ DO
     CASE 13
       IF myColor% = turn% AND is_legal_move(sel_col%, sel_row%, turn%) THEN
         board%(sel_col%, sel_row%) = turn%
-        IF turn% = 1 THEN
-          pieceCol! = BLACK_PIECE_COLOR%
-        ELSE
-          pieceCol! = WHITE_PIECE_COLOR%
-        END IF
+        IF turn% = 1 THEN pieceCol! = BLACK_PIECE_COLOR% ELSE pieceCol! = WHITE_PIECE_COLOR%
         draw_piece sel_col%, sel_row%, pieceCol!
         flip_pieces sel_col%, sel_row%, turn%
         draw_score_display
@@ -328,6 +276,5 @@ DO
         END IF
       END IF
   END SELECT
-
   draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
 LOOP

@@ -167,15 +167,18 @@ SUB check_game_over
     count_score b%, w%
     COLOR RGB(255,255,255)
     PRINT @(20, 140) "Game Over"
-    PRINT @(20, 170) "Black: "; b%; "   White: "; w%
+    PRINT @(20, 150) "Black: "; b%; "   White: "; w%
     IF b% > w% THEN
-      PRINT @(20, 200) "Black wins!"
+      PRINT @(20, 160) "Black wins!"
     ELSEIF w% > b% THEN
-      PRINT @(20, 200) "White wins!"
+      PRINT @(20, 160) "White wins!"
     ELSE
-      PRINT @(20, 200) "It's a tie!"
+      PRINT @(20, 160) "It's a tie!"
     END IF
-    PRINT @(20, 240) "Press any key to return to menu..."
+    PRINT @(20, 170) "Press any key to return to menu..."
+    IF peer$ <> "" THEN
+      WEB UDP SEND peer$, PORT%, "GAMEOVER " + STR$(b%) + "," + STR$(w%)
+    ENDIF
     DO WHILE INKEY$ = "": PAUSE 50: LOOP
     LED_AllOff
     CHAIN "b:menu.bas"
@@ -244,18 +247,18 @@ SUB OnUDP
   LOCAL t$, x%, y%
   t$ = MM.MESSAGE$
   peer$ = MM.ADDRESS$
+
   IF t$ = "HELLO" AND myColor% = 0 THEN
-    ' Randomly assign the first player's color
+    ' Randomly assign the first players color
     IF RND > 0.5 THEN
       myColor% = 1
       turn% = 1
     ELSE
       myColor% = 2
       turn% = 2
-    ENDIF
+    END IF
     LED_UpdateTurnLights
     WEB UDP SEND peer$, PORT%, "ACK " + STR$(myColor%)
-
 
   ELSEIF LEFT$(t$, 3) = "ACK" AND myColor% = 0 THEN
     ' Parse assigned color from peer
@@ -265,29 +268,68 @@ SUB OnUDP
     ELSE
       myColor% = 1                     ' Fallback if no color sent
       turn% = 1
-    ENDIF
+    END IF
     LED_UpdateTurnLights
-
 
   ELSEIF LEFT$(t$, 4) = "MOVE" THEN
     x% = VAL(MID$(t$, 6, 1))
     y% = VAL(MID$(t$, 8, 1))
     IF is_legal_move(x%, y%, turn%) THEN
       board%(x%, y%) = turn%
-      IF turn% = 1 THEN pieceCol! = BLACK_PIECE_COLOR% ELSE pieceCol! = WHITE_PIECE_COLOR%
+      IF turn% = 1 THEN
+        pieceCol! = BLACK_PIECE_COLOR%
+      ELSE
+        pieceCol! = WHITE_PIECE_COLOR%
+      END IF
       draw_piece x%, y%, pieceCol!
       flip_pieces x%, y%, turn%
+
+      ' Redraw everything to fully sync state before checking game over
+      draw_board
+      FOR x% = 1 TO BOARD_SIZE%
+        FOR y% = 1 TO BOARD_SIZE%
+          SELECT CASE board%(x%, y%)
+            CASE 1: draw_piece x%, y%, BLACK_PIECE_COLOR%
+            CASE 2: draw_piece x%, y%, WHITE_PIECE_COLOR%
+          END SELECT
+        NEXT y%
+      NEXT x%
       draw_score_display
+
       turn% = 3 - turn%
       LED_UpdateTurnLights
       check_game_over
+      draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+    END IF
+    
     ELSEIF t$ = "PASS" THEN
       turn% = 3 - turn%
       LED_UpdateTurnLights
       check_game_over
-    END IF
+      draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+      
+    ELSEIF LEFT$(t$, 8) = "GAMEOVER" THEN
+      LOCAL b%, w%, comma%
+      comma% = INSTR(t$, ",")
+      b% = VAL(MID$(t$, 10, comma% - 10))
+      w% = VAL(MID$(t$, comma% + 1))
+      COLOR RGB(255,255,255)
+      PRINT @(20, 140) "Game Over"
+      PRINT @(20, 150) "Black: "; b%; "   White: "; w%
+      IF b% > w% THEN
+        PRINT @(20, 160) "Black wins!"
+      ELSEIF w% > b% THEN
+        PRINT @(20, 160) "White wins!"
+      ELSE
+        PRINT @(20, 160) "It's a tie!"
+      END IF
+      PRINT @(20, 180) "Press any key to return to menu..."
+      DO WHILE INKEY$ = "": PAUSE 50: LOOP
+      LED_AllOff
+      CHAIN "b:menu.bas"
   END IF
 END SUB
+
 
 ' === INIT: Open UDP and handshake ===
 WEB UDP OPEN SERVER PORT PORT%
@@ -375,6 +417,9 @@ DO
       IF legalMove% = 0 THEN
         turn% = 3 - turn%
         LED_UpdateTurnLights
+        IF peer$ <> "" THEN
+          WEB UDP SEND peer$, PORT%, "PASS"
+        END IF
       ELSE
         COLOR RGB(255,255,0), BOARD_COLOR%
         PRINT @(20, 300) "Cannot pass: legal moves available";

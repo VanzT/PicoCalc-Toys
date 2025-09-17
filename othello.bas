@@ -31,7 +31,7 @@ DIM pieceCol!
 DIM x%, y%, legalMove%
 DIM assigned% : assigned% = 0
 DIM myTicket%
-
+DIM lastHello! : lastHello! = -1
 
 CONST LEDCOUNT = 8
 DIM INTEGER ledBuf%(LEDCOUNT)
@@ -56,6 +56,9 @@ SUB LED_UpdateTurnLights
   ENDIF
 END SUB
 
+SUB SendHello
+  WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
+END SUB
 
 ' === SUB: Count pieces on board ===
 SUB count_score(BYREF b%, BYREF w%)
@@ -239,96 +242,110 @@ SUB flip_pieces(col%, row%, player%)
 END SUB
 
 ' === SUB: Handle received message ===
-SUB OnUDP
-  LOCAL t$, x%, y%, comma%, hostColor%, startTurn%, peerTicket%, peerColor%
-  t$ = MM.MESSAGE$
-  peer$ = MM.ADDRESS$
+  SUB OnUDP
+    LOCAL t$, src$, x%, y%, comma%, hostColor%, startTurn%, peerTicket%
+    t$ = MM.MESSAGE$
+    src$ = MM.ADDRESS$
 
-  ' ---- Handshake: deterministic, no races ----
-  IF assigned% = 0 THEN
-    IF LEFT$(t$, 5) = "HELLO" THEN
-      ' parse the peer's ticket after "HELLO "
-      peerTicket% = VAL(MID$(t$, 7))
-      ' higher ticket becomes the assigner
-      IF myTicket% > peerTicket% THEN
-        ' I assign
-        IF RND > 0.5 THEN hostColor% = 1 ELSE hostColor% = 2
-        startTurn% = 1             ' Black starts
-        myColor% = hostColor%
-        turn%    = startTurn%
-        assigned% = 1
+    ' Fast path: ignore unrelated messages
+    IF LEFT$(t$,5) <> "HELLO" AND LEFT$(t$,6) <> "ASSIGN" AND LEFT$(t$,4) <> "MOVE" AND t$ <> "PASS" AND LEFT$(t$,8) <> "GAMEOVER" THEN EXIT SUB
+
+    ' ---- Discovery / handshake ----
+    IF assigned% = 0 THEN
+      IF LEFT$(t$,5) = "HELLO" THEN
+        peerTicket% = VAL(MID$(t$, 7))
+
+        ' Ignore my own broadcast or a rare ticket collision
+        IF peerTicket% = myTicket% THEN
+          myTicket% = INT(RND * 1000000)
+          EXIT SUB
+        ENDIF
+
+        peer$ = src$
+
+        IF myTicket% > peerTicket% THEN
+          ' I assign
+          IF RND > 0.5 THEN hostColor% = 1 ELSE hostColor% = 2
+          startTurn% = 1                 ' Black starts
+          myColor%   = hostColor%
+          turn%      = startTurn%
+          assigned%  = 1
+          LED_UpdateTurnLights
+          WEB UDP SEND peer$, PORT%, "ASSIGN " + STR$(hostColor%) + "," + STR$(startTurn%)
+        ELSE
+          ' Lower ticket: make sure the higher-ticket peer definitely sees me
+          WEB UDP SEND peer$, PORT%, "HELLO " + STR$(myTicket%)
+        ENDIF
+        EXIT SUB
+      ENDIF
+
+      IF LEFT$(t$,6) = "ASSIGN" THEN
+        comma%     = INSTR(t$, ",")
+        hostColor% = VAL(MID$(t$, 8, comma% - 8))
+        startTurn% = VAL(MID$(t$, comma% + 1))
+        myColor%   = 3 - hostColor%
+        turn%      = startTurn%
+        assigned%  = 1
+        peer$      = src$
         LED_UpdateTurnLights
-        WEB UDP SEND peer$, PORT%, "ASSIGN " + STR$(hostColor%) + "," + STR$(startTurn%)
-      END IF
-      EXIT SUB
-    END IF
+        EXIT SUB
+      ENDIF
+    ENDIF
 
-    IF LEFT$(t$, 6) = "ASSIGN" THEN
-      comma%     = INSTR(t$, ",")
-      hostColor% = VAL(MID$(t$, 8, comma% - 8))
-      startTurn% = VAL(MID$(t$, comma% + 1))
-      myColor%   = 3 - hostColor%
-      turn%      = startTurn%
-      assigned%  = 1
-      LED_UpdateTurnLights
-      EXIT SUB
-    END IF
-  END IF
+    ' ---- Normal gameplay after assignment ----
+    IF LEFT$(t$,4) = "MOVE" THEN
+      ' Parse robustly (handles 1–2 digit numbers if ever needed)
+      comma% = INSTR(t$, ",")
+      x% = VAL(MID$(t$, 6, comma% - 6))
+      y% = VAL(MID$(t$, comma% + 1))
+      IF is_legal_move(x%, y%, turn%) THEN
+        board%(x%, y%) = turn%
+        IF turn% = 1 THEN pieceCol! = BLACK_PIECE_COLOR% ELSE pieceCol! = WHITE_PIECE_COLOR%
+        draw_piece x%, y%, pieceCol!
+        flip_pieces x%, y%, turn%
 
-  ' ---- Normal gameplay after assignment ----
-  IF LEFT$(t$, 4) = "MOVE" THEN
-    x% = VAL(MID$(t$, 6, 1))
-    y% = VAL(MID$(t$, 8, 1))
-    IF is_legal_move(x%, y%, turn%) THEN
-      board%(x%, y%) = turn%
-      IF turn% = 1 THEN pieceCol! = BLACK_PIECE_COLOR% ELSE pieceCol! = WHITE_PIECE_COLOR%
-      draw_piece x%, y%, pieceCol!
-      flip_pieces x%, y%, turn%
+        ' Sync redraw
+        draw_board
+        FOR x% = 1 TO BOARD_SIZE%
+          FOR y% = 1 TO BOARD_SIZE%
+            SELECT CASE board%(x%, y%)
+              CASE 1: draw_piece x%, y%, BLACK_PIECE_COLOR%
+              CASE 2: draw_piece x%, y%, WHITE_PIECE_COLOR%
+            END SELECT
+          NEXT y%
+        NEXT x%
+        draw_score_display
 
-      ' sync redraw
-      draw_board
-      FOR x% = 1 TO BOARD_SIZE%
-        FOR y% = 1 TO BOARD_SIZE%
-          SELECT CASE board%(x%, y%)
-            CASE 1: draw_piece x%, y%, BLACK_PIECE_COLOR%
-            CASE 2: draw_piece x%, y%, WHITE_PIECE_COLOR%
-          END SELECT
-        NEXT y%
-      NEXT x%
-      draw_score_display
+        turn% = 3 - turn%
+        LED_UpdateTurnLights
+        check_game_over
+        draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+      ENDIF
 
+    ELSEIF t$ = "PASS" THEN
       turn% = 3 - turn%
       LED_UpdateTurnLights
       check_game_over
       draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
-    END IF
 
-  ELSEIF t$ = "PASS" THEN
-    turn% = 3 - turn%
-    LED_UpdateTurnLights
-    check_game_over
-    draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+    ELSEIF LEFT$(t$,8) = "GAMEOVER" THEN
+      COLOR RGB(255,255,255)
+      PRINT @(20, 140) "Game Over"
+      PRINT @(20, 170) "Press any key to return to menu..."
+      DO WHILE INKEY$ = "": PAUSE 50: LOOP
+      LED_AllOff
+      CHAIN "b:menu.bas"
+    ENDIF
+  END SUB
 
-  ELSEIF LEFT$(t$, 8) = "GAMEOVER" THEN
-    LOCAL b%, w%
-    comma% = INSTR(t$, ",")
-    b% = VAL(MID$(t$, 10, comma% - 10))
-    w% = VAL(MID$(t$, comma% + 1))
-    COLOR RGB(255,255,255)
-    PRINT @(20, 140) "Game Over"
-    PRINT @(20, 170) "Press any key to return to menu..."
-    DO WHILE INKEY$ = "": PAUSE 50: LOOP
-    LED_AllOff
-    CHAIN "b:menu.bas"
-  END IF
-END SUB
 
 ' === INIT: Open UDP and handshake ===
 WEB UDP OPEN SERVER PORT PORT%
 WEB UDP INTERRUPT OnUDP
 PAUSE 500
 myTicket% = INT(RND * 1000000)
-WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
+SendHello
+lastHello! = TIMER
 
 ' === Pre-Game HUD ===
 CLS RGB(0,0,0)
@@ -355,7 +372,10 @@ DO WHILE INKEY$ = ""
   ELSE
     PRINT peer$
   END IF
-
+  IF assigned% = 0 AND (TIMER - lastHello!) >= 1 THEN
+    SendHello
+    lastHello! = TIMER
+  ENDIF
   PAUSE 250
 LOOP
 

@@ -14,7 +14,8 @@ CONST BOARD_COLOR% = RGB(0,160,0)
 CONST LINE_COLOR% = RGB(0,0,0)
 CONST BLACK_PIECE_COLOR% = RGB(0,0,0)
 CONST WHITE_PIECE_COLOR% = RGB(255,255,255)
-CONST SELECTOR_COLOR% = RGB(255, 0, 0)
+'CONST SELECTOR_COLOR% = RGB(255, 0, 0) 
+CONST SELECTOR_COLOR% = RGB(255, 255, 0) 
 CONST ERASE_COLOR% = BOARD_COLOR%
 CONST SELECTOR_EXTRA_RADIUS% = 2
 CONST PORT% = 6000
@@ -28,6 +29,9 @@ DIM myColor% = 0      ' 1 = Black, 2 = White (assigned after handshake)
 DIM peer$ = ""
 DIM pieceCol!
 DIM x%, y%, legalMove%
+DIM assigned% : assigned% = 0
+DIM myTicket%
+
 
 CONST LEDCOUNT = 8
 DIM INTEGER ledBuf%(LEDCOUNT)
@@ -167,14 +171,6 @@ SUB check_game_over
     count_score b%, w%
     COLOR RGB(255,255,255)
     PRINT @(20, 140) "Game Over"
-    PRINT @(20, 150) "Black: "; b%; "   White: "; w%
-    IF b% > w% THEN
-      PRINT @(20, 160) "Black wins!"
-    ELSEIF w% > b% THEN
-      PRINT @(20, 160) "White wins!"
-    ELSE
-      PRINT @(20, 160) "It's a tie!"
-    END IF
     PRINT @(20, 170) "Press any key to return to menu..."
     IF peer$ <> "" THEN
       WEB UDP SEND peer$, PORT%, "GAMEOVER " + STR$(b%) + "," + STR$(w%)
@@ -244,47 +240,52 @@ END SUB
 
 ' === SUB: Handle received message ===
 SUB OnUDP
-  LOCAL t$, x%, y%
+  LOCAL t$, x%, y%, comma%, hostColor%, startTurn%, peerTicket%, peerColor%
   t$ = MM.MESSAGE$
   peer$ = MM.ADDRESS$
 
-  IF t$ = "HELLO" AND myColor% = 0 THEN
-    ' Randomly assign the first players color
-    IF RND > 0.5 THEN
-      myColor% = 1
-      turn% = 1
-    ELSE
-      myColor% = 2
-      turn% = 2
+  ' ---- Handshake: deterministic, no races ----
+  IF assigned% = 0 THEN
+    IF LEFT$(t$, 5) = "HELLO" THEN
+      ' parse the peer's ticket after "HELLO "
+      peerTicket% = VAL(MID$(t$, 7))
+      ' higher ticket becomes the assigner
+      IF myTicket% > peerTicket% THEN
+        ' I assign
+        IF RND > 0.5 THEN hostColor% = 1 ELSE hostColor% = 2
+        startTurn% = 1             ' Black starts
+        myColor% = hostColor%
+        turn%    = startTurn%
+        assigned% = 1
+        LED_UpdateTurnLights
+        WEB UDP SEND peer$, PORT%, "ASSIGN " + STR$(hostColor%) + "," + STR$(startTurn%)
+      END IF
+      EXIT SUB
     END IF
-    LED_UpdateTurnLights
-    WEB UDP SEND peer$, PORT%, "ACK " + STR$(myColor%)
 
-  ELSEIF LEFT$(t$, 3) = "ACK" AND myColor% = 0 THEN
-    ' Parse assigned color from peer
-    IF LEN(t$) > 4 THEN
-      myColor% = 3 - VAL(MID$(t$, 5))  ' Choose opposite color
-      turn% = VAL(MID$(t$, 5))         ' Same as peers color
-    ELSE
-      myColor% = 1                     ' Fallback if no color sent
-      turn% = 1
+    IF LEFT$(t$, 6) = "ASSIGN" THEN
+      comma%     = INSTR(t$, ",")
+      hostColor% = VAL(MID$(t$, 8, comma% - 8))
+      startTurn% = VAL(MID$(t$, comma% + 1))
+      myColor%   = 3 - hostColor%
+      turn%      = startTurn%
+      assigned%  = 1
+      LED_UpdateTurnLights
+      EXIT SUB
     END IF
-    LED_UpdateTurnLights
+  END IF
 
-  ELSEIF LEFT$(t$, 4) = "MOVE" THEN
+  ' ---- Normal gameplay after assignment ----
+  IF LEFT$(t$, 4) = "MOVE" THEN
     x% = VAL(MID$(t$, 6, 1))
     y% = VAL(MID$(t$, 8, 1))
     IF is_legal_move(x%, y%, turn%) THEN
       board%(x%, y%) = turn%
-      IF turn% = 1 THEN
-        pieceCol! = BLACK_PIECE_COLOR%
-      ELSE
-        pieceCol! = WHITE_PIECE_COLOR%
-      END IF
+      IF turn% = 1 THEN pieceCol! = BLACK_PIECE_COLOR% ELSE pieceCol! = WHITE_PIECE_COLOR%
       draw_piece x%, y%, pieceCol!
       flip_pieces x%, y%, turn%
 
-      ' Redraw everything to fully sync state before checking game over
+      ' sync redraw
       draw_board
       FOR x% = 1 TO BOARD_SIZE%
         FOR y% = 1 TO BOARD_SIZE%
@@ -301,41 +302,33 @@ SUB OnUDP
       check_game_over
       draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
     END IF
-    
-    ELSEIF t$ = "PASS" THEN
-      turn% = 3 - turn%
-      LED_UpdateTurnLights
-      check_game_over
-      draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
-      
-    ELSEIF LEFT$(t$, 8) = "GAMEOVER" THEN
-      LOCAL b%, w%, comma%
-      comma% = INSTR(t$, ",")
-      b% = VAL(MID$(t$, 10, comma% - 10))
-      w% = VAL(MID$(t$, comma% + 1))
-      COLOR RGB(255,255,255)
-      PRINT @(20, 140) "Game Over"
-      PRINT @(20, 150) "Black: "; b%; "   White: "; w%
-      IF b% > w% THEN
-        PRINT @(20, 160) "Black wins!"
-      ELSEIF w% > b% THEN
-        PRINT @(20, 160) "White wins!"
-      ELSE
-        PRINT @(20, 160) "It's a tie!"
-      END IF
-      PRINT @(20, 180) "Press any key to return to menu..."
-      DO WHILE INKEY$ = "": PAUSE 50: LOOP
-      LED_AllOff
-      CHAIN "b:menu.bas"
+
+  ELSEIF t$ = "PASS" THEN
+    turn% = 3 - turn%
+    LED_UpdateTurnLights
+    check_game_over
+    draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
+
+  ELSEIF LEFT$(t$, 8) = "GAMEOVER" THEN
+    LOCAL b%, w%
+    comma% = INSTR(t$, ",")
+    b% = VAL(MID$(t$, 10, comma% - 10))
+    w% = VAL(MID$(t$, comma% + 1))
+    COLOR RGB(255,255,255)
+    PRINT @(20, 140) "Game Over"
+    PRINT @(20, 170) "Press any key to return to menu..."
+    DO WHILE INKEY$ = "": PAUSE 50: LOOP
+    LED_AllOff
+    CHAIN "b:menu.bas"
   END IF
 END SUB
-
 
 ' === INIT: Open UDP and handshake ===
 WEB UDP OPEN SERVER PORT PORT%
 WEB UDP INTERRUPT OnUDP
 PAUSE 500
-WEB UDP SEND "255.255.255.255", PORT%, "HELLO"
+myTicket% = INT(RND * 1000000)
+WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
 
 ' === Pre-Game HUD ===
 CLS RGB(0,0,0)
@@ -379,6 +372,7 @@ draw_score_display
 draw_selector sel_col%, sel_row%, SELECTOR_COLOR%
 LED_UpdateTurnLights
 
+
 ' === Main Loop ===
 DO
   k$ = INKEY$
@@ -396,12 +390,16 @@ DO
         draw_piece sel_col%, sel_row%, pieceCol!
         flip_pieces sel_col%, sel_row%, turn%
         draw_score_display
-        turn% = 3 - turn%
-        LED_UpdateTurnLights
-        check_game_over
+
+        ' >>> Send MOVE first so the peer can apply the final state
         IF peer$ <> "" THEN
           WEB UDP SEND peer$, PORT%, "MOVE " + STR$(sel_col%) + "," + STR$(sel_row%)
         END IF
+
+        ' Now proceed locally
+        turn% = 3 - turn%
+        LED_UpdateTurnLights
+        check_game_over
       END IF
     CASE 112  ' F1 key – try to pass
       legalMove% = 0

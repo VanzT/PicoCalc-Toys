@@ -89,7 +89,7 @@ SUB draw_score_display
   END IF
 
   COLOR RGB(255,255,255), BOARD_COLOR%
-  PRINT @(10, 4) bLabel$ + ": " + STR$(b%) + "  " + wLabel$ + ": " + STR$(w%)
+  PRINT @(10, 4) bLabel$ + ": " + STR$(b%) + " " + wLabel$ + ": " + STR$(w%) + " "
 END SUB
 
 

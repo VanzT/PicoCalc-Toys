@@ -53,7 +53,7 @@ lastSeq% = 0
 started% = 0
 peerSeen% = 0
 DIM bcast$, bcast255$
-
+DIM nt$
 DIM postPairingAt%
 DIM kickoffDone%
 DIM showHUD%
@@ -1530,6 +1530,14 @@ DO
   END IF
   
   k$ = INKEY$
+  
+  ' Allow manual re-sync at any time with R/r
+  IF k$ = "R" OR k$ = "r" THEN
+    IF turnIsWhite THEN nt$ = "WHITE" ELSE nt$ = "BROWN"
+    SendBoard nt$
+    StatusHUD("Manual resync")
+    k$ = ""                 ' consume it so it doesn't fall through
+  END IF
   
   IF NOT IsMyTurn%() THEN
     ' not my turn so ignore any key

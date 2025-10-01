@@ -1531,8 +1531,8 @@ DO
   
   k$ = INKEY$
   
-  ' Allow manual re-sync at any time with R/r
-  IF k$ = "R" OR k$ = "r" THEN
+  ' Allow manual re-sync at any time with R
+  IF k$ = "R" THEN
     IF turnIsWhite THEN nt$ = "WHITE" ELSE nt$ = "BROWN"
     SendBoard nt$
     StatusHUD("Manual resync")

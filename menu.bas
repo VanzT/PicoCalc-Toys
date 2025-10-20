@@ -1,62 +1,62 @@
-' Retro Menu (uniform speed, header battery, skip MENU.BAS)
-' - Battery on top row; files start from row 2
+' Retro Menu (collision-safe, uniform speed, header battery, skip MENU.BAS)
+' - Battery on top row; files start on row 1
 ' - A->Z sort
 ' - Type-on: current char WHITE, previous GREEN
-' - After filename finishes, a single WHITE underscore sweeps to right edge
-' - Skips listing MENU.BAS (case-insensitive)
+' - After filename, a single WHITE underscore sweeps to right edge
+' - Uses unique variable names to avoid clashes after returning from other programs
 
 Dim file$(25)
 
-' colors
-CONST FG%        = RGB(0,255,0)
-CONST BG%        = RGB(0,0,0)
-CONST HILITE_BG% = RGB(0,40,0)
-CONST CURSOR_FG% = RGB(255,255,255)
+' colors (locals to this file; not CONST to avoid clashes)
+mFG%     = RGB(0,255,0)
+mBG%     = RGB(0,0,0)
+mHiBG%   = RGB(0,40,0)
+mCurFG%  = RGB(255,255,255)
 
-Color FG%, BG%
+Color mFG%, mBG%
 CLS
 
 ' screen geometry
-rows% = MM.VRES \ MM.FONTHEIGHT
-cols% = MM.HRES \ MM.FONTWIDTH
-firstFileRow% = 1
+scrRows% = MM.VRES \ MM.FONTHEIGHT
+scrCols% = MM.HRES \ MM.FONTWIDTH
+mFirstRow% = 1                 ' reserve row 0 for battery
 
 ' collect *.BAS on B:, skipping MENU.BAS
 Drive "B:"
-nFiles% = 0
-f$ = Dir$("*.bas", FILE)
-Do While f$ <> "" And nFiles% < 25
-  If UCase$(f$) <> "MENU.BAS" Then
-    nFiles% = nFiles% + 1
-    file$(nFiles%) = f$
+mCount% = 0
+fName$ = Dir$("*.bas", FILE)
+Do While fName$ <> "" And mCount% < 25
+  If UCase$(fName$) <> "MENU.BAS" Then
+    mCount% = mCount% + 1
+    file$(mCount%) = fName$
   EndIf
-  f$ = Dir$()
+  fName$ = Dir$()
 Loop
 
-If nFiles% = 0 Then
+If mCount% = 0 Then
   Gosub DrawBattery
-  Print @(0, firstFileRow% * MM.FONTHEIGHT) "No .BAS files found on B:"
+  Print @(0, mFirstRow% * MM.FONTHEIGHT) "No .BAS files found on B:"
   End
 EndIf
 
 ' cap to visible rows (header uses 1 row)
-maxVisible% = rows% - 1
-If nFiles% > maxVisible% Then nFiles% = maxVisible%
+maxVisible% = scrRows% - 1
+If mCount% > maxVisible% Then mCount% = maxVisible%
 
 ' sort A->Z case-insensitive
-For sA% = 1 To nFiles% - 1
-  For sB% = sA% + 1 To nFiles%
+For sA% = 1 To mCount% - 1
+  For sB% = sA% + 1 To mCount%
     If UCase$(file$(sB%)) < UCase$(file$(sA%)) Then
-      tmp$ = file$(sA%)
+      t$ = file$(sA%)
       file$(sA%) = file$(sB%)
-      file$(sB%) = tmp$
+      file$(sB%) = t$
     EndIf
   Next sB%
 Next sA%
 
 ' timing: 0 = as fast as possible, ~2000 for ~2s total
-TOTAL_MS% = 2000
-stepsTotal% = nFiles% * cols%
+TOTAL_MS% = 1000
+stepsTotal% = mCount% * scrCols%
 If stepsTotal% < 1 Then stepsTotal% = 1
 If TOTAL_MS% <= 0 Then
   charDelay% = 0
@@ -68,75 +68,75 @@ EndIf
 Gosub DrawBattery
 
 ' animate each filename (starts on row 1)
-For iLine% = 1 To nFiles%
-  name$ = file$(iLine%)
-  y% = (firstFileRow% + (iLine% - 1)) * MM.FONTHEIGHT
-  showmax% = Len(name$)
-  If showmax% > cols% Then showmax% = cols%
+For mLine% = 1 To mCount%
+  nm$ = file$(mLine%)
+  mY% = (mFirstRow% + (mLine% - 1)) * MM.FONTHEIGHT
+  showmax% = Len(nm$)
+  If showmax% > scrCols% Then showmax% = scrCols%
 
-  Color FG%, BG%
-  Print @(0, y%) Space$(cols%)
+  Color mFG%, mBG%
+  Print @(0, mY%) Space$(scrCols%)
 
   ' type-on: previous char green, current char white
-  For jdx% = 1 To showmax%
-    If jdx% > 1 Then
-      Color FG%, BG%
-      Print @((jdx% - 2) * MM.FONTWIDTH, y%) Mid$(name$, jdx% - 1, 1)
+  For j% = 1 To showmax%
+    If j% > 1 Then
+      Color mFG%, mBG%
+      Print @((j% - 2) * MM.FONTWIDTH, mY%) Mid$(nm$, j% - 1, 1)
     EndIf
-    Color CURSOR_FG%, BG%
-    Print @((jdx% - 1) * MM.FONTWIDTH, y%) Mid$(name$, jdx%, 1)
+    Color mCurFG%, mBG%
+    Print @((j% - 1) * MM.FONTWIDTH, mY%) Mid$(nm$, j%, 1)
     If charDelay% > 0 Then Pause charDelay%
-  Next jdx%
+  Next j%
 
-  ' finalize last char to green
+  ' finalize last typed char to green
   If showmax% > 0 Then
-    Color FG%, BG%
-    Print @((showmax% - 1) * MM.FONTWIDTH, y%) Mid$(name$, showmax%, 1)
+    Color mFG%, mBG%
+    Print @((showmax% - 1) * MM.FONTWIDTH, mY%) Mid$(nm$, showmax%, 1)
   EndIf
 
   ' underscore tail to right edge
-  prevUndX% = -1
-  If showmax% < cols% Then
-    For ux% = showmax% + 1 To cols%
-      If prevUndX% >= 0 Then
-        Color FG%, BG%
-        Print @(prevUndX% * MM.FONTWIDTH, y%) " "
+  undXPrev% = -1
+  If showmax% < scrCols% Then
+    For ux% = showmax% + 1 To scrCols%
+      If undXPrev% >= 0 Then
+        Color mFG%, mBG%
+        Print @(undXPrev% * MM.FONTWIDTH, mY%) " "
       EndIf
-      Color CURSOR_FG%, BG%
-      Print @((ux% - 1) * MM.FONTWIDTH, y%) "_"
+      Color mCurFG%, mBG%
+      Print @((ux% - 1) * MM.FONTWIDTH, mY%) "_"
       If charDelay% > 0 Then Pause charDelay%
-      prevUndX% = ux% - 1
+      undXPrev% = ux% - 1
     Next ux%
   EndIf
 
-  If prevUndX% >= 0 Then
-    Color FG%, BG%
-    Print @(prevUndX% * MM.FONTWIDTH, y%) " "
+  If undXPrev% >= 0 Then
+    Color mFG%, mBG%
+    Print @(undXPrev% * MM.FONTWIDTH, mY%) " "
   EndIf
 
   Gosub DrawBattery
   If charDelay% > 0 Then Pause charDelay%
-Next iLine%
+Next mLine%
 
 ' initial highlight
-iSel% = 1
-iPrev% = 1
+mSel% = 1
+mSelPrev% = 1
 Gosub DrawItemUnselected
 Gosub DrawItemSelected
 Gosub DrawBattery
 
 ' main loop
 mainLoop:
-  k$ = Inkey$
-  If k$ = "" Then GoTo mainLoop
+  key$ = Inkey$
+  If key$ = "" Then GoTo mainLoop
 
-  If Asc(k$) = 129 Then iPrev% = iSel%: iSel% = iSel% + 1
-  If Asc(k$) = 128 Then iPrev% = iSel%: iSel% = iSel% - 1
+  If Asc(key$) = 129 Then mSelPrev% = mSel%: mSel% = mSel% + 1   ' down
+  If Asc(key$) = 128 Then mSelPrev% = mSel%: mSel% = mSel% - 1   ' up
 
-  If iSel% < 1 Then iSel% = nFiles%
-  If iSel% > nFiles% Then iSel% = 1
+  If mSel% < 1 Then mSel% = mCount%
+  If mSel% > mCount% Then mSel% = 1
 
-  If Asc(k$) = 13 Then GoTo selectedFile
+  If Asc(key$) = 13 Then GoTo selectedFile  ' enter
 
   Gosub DrawItemUnselected
   Gosub DrawItemSelected
@@ -144,42 +144,40 @@ mainLoop:
   GoTo mainLoop
 
 selectedFile:
-  Color FG%, BG%
+  Color mFG%, mBG%
   CLS
-  Run file$(iSel%)
+  Run file$(mSel%)
 
 ' draw helpers
 DrawItemUnselected:
-  Color FG%, BG%
-  y% = (firstFileRow% + (iPrev% - 1)) * MM.FONTHEIGHT
-  Print @(0, y%) Space$(cols%)
-  Print @(0, y%) file$(iPrev%)
+  Color mFG%, mBG%
+  mY% = (mFirstRow% + (mSelPrev% - 1)) * MM.FONTHEIGHT
+  Print @(0, mY%) Space$(scrCols%)
+  Print @(0, mY%) file$(mSelPrev%)
 Return
 
 DrawItemSelected:
-  Color FG%, HILITE_BG%
-  y% = (firstFileRow% + (iSel% - 1)) * MM.FONTHEIGHT
-  Print @(0, y%) Space$(cols%)
-  Print @(0, y%) file$(iSel%)
+  Color mFG%, mHiBG%
+  mY% = (mFirstRow% + (mSel% - 1)) * MM.FONTHEIGHT
+  Print @(0, mY%) Space$(scrCols%)
+  Print @(0, mY%) file$(mSel%)
 Return
 
-' battery helpers
+' battery helper
 DrawBattery:
-  Color FG%, BG%
-  batt$ = BatteryStr$()
-  bx% = MM.HRES - Len(batt$) * MM.FONTWIDTH
-  If bx% < 0 Then bx% = 0
-  Print @(bx%, 0) batt$
-Return
-
-Function BatteryStr$()
-  Local p%, s$
+  ' compute "NN%"
+  Local p%, s$, batt$
   p% = MM.INFO(BATTERY)
   If p% < 0 Or p% > 100 Then
-    BatteryStr$ = "??%"
-    Exit Function
+    batt$ = "??%"
+  Else
+    s$ = STR$(p%)
+    If Left$(s$,1) = " " Then s$ = Mid$(s$,2)
+    batt$ = s$ + "%"
   EndIf
-  s$ = STR$(p%)
-  If Left$(s$,1) = " " Then s$ = Mid$(s$,2)
-  BatteryStr$ = s$ + "%"
-End Function
+  Local bx%
+  bx% = MM.HRES - Len(batt$) * MM.FONTWIDTH
+  If bx% < 0 Then bx% = 0
+  Color mFG%, mBG%
+  Print @(bx%, 0) batt$
+Return

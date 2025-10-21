@@ -17,7 +17,6 @@ CONST MARGIN_R = 14
 CONST BORDER_BOTTOM_LIFT = 12   ' pixels to raise the bottom border
 
 ' Colors
-CONST COL_BG   = RGB(0,0,0)
 CONST COL_AXES = RGB(180,180,180)
 CONST COL_GRID = RGB(70,70,70)
 CONST COL_TEXT = RGB(220,220,220)
@@ -39,15 +38,12 @@ DIM g_target_y%, g_target_m%, g_target_d%
 DIM g_days0
 DIM p_y%, p_m%, p_d%
 DIM k$
-DIM ok%, tmp$, in$, birth$, line$
+DIM ok%, in$, birth$, dline$
 
 ' Layout globals (computed each frame)
 DIM g_plot_y0%, g_plot_y1%     ' base plot band (fixed)
 DIM g_header_h%, g_legend_h%   ' reserved header/legend heights
 DIM g_line_h%                  ' text line height (font-dependent)
-
-' Frame that hugs data (computed each frame)
-DIM g_frame_y0%, g_frame_y1%
 
 GOTO Main
 
@@ -115,52 +111,6 @@ FUNCTION JDN(y%, m%, d%)
   j  = d% + ((153 * m2 + 2) \ 5) + 365 * y2 + (y2 \ 4) - (y2 \ 100) + (y2 \ 400) - 32045
   JDN = j
 END FUNCTION
-
-FUNCTION CfgLoadBirth$(def$)
-  LOCAL s$
-  IF MM.INFO(EXISTS FILE CFG_FILE$) THEN
-    OPEN CFG_FILE$ FOR INPUT AS #1
-    LINE INPUT #1, s$
-    CLOSE #1
-    IF ParseDateToYMD(s$) THEN
-      CfgLoadBirth$ = s$
-      EXIT FUNCTION
-    END IF
-  END IF
-  CfgLoadBirth$ = def$
-END FUNCTION
-
-
-SUB CfgSaveBirth(s$)
-  ' Overwrites (or creates) the cfg with the given date string
-  OPEN CFG_FILE$ FOR OUTPUT AS #1
-  PRINT #1, s$
-  CLOSE #1
-END SUB
-
-FUNCTION PromptBirthWithDefault$()
-  ' Shows prompt with default in brackets.
-  ' Enter = accept default; otherwise use typed value (validated).
-  LOCAL def$, s$
-  ' Use today as a fallback default if the cfg is missing/invalid
-  def$ = CfgLoadBirth$(DATE$)
-  DO
-    IF def$ <> "" THEN
-      PRINT "Birth Date (YYYY-MM-DD) ["; def$; "]: ";
-    ELSE
-      PRINT "Birth Date (YYYY-MM-DD): ";
-    END IF
-    LINE INPUT s$
-    s$ = Trim2$(s$)
-    IF s$ = "" THEN s$ = def$
-    IF ParseDateToYMD(s$) THEN
-      PromptBirthWithDefault$ = s$
-      EXIT FUNCTION
-    END IF
-    PRINT "Invalid date. Try again."
-  LOOP
-END FUNCTION
-
 
 SUB JDN_to_YMD(j, y%, m%, d%)
   LOCAL a, b, c, d1, e, m1
@@ -247,22 +197,6 @@ SUB ComputeLayout
   IF g_plot_y1% < g_plot_y0% + 40 THEN g_plot_y1% = g_plot_y0% + 40
 END SUB
 
-' Frame that hugs the actually plotted pixels (with a tiny pad)
-SUB ComputeFrameFromData
-  LOCAL d%, y%, minPix%, maxPix%, pad%
-  minPix% =  9999
-  maxPix% = -9999
-  FOR d% = -15 TO 15
-    y% = YtoPix(SIN(2.0 * PI * ((g_days0 + d%) / P23))) : IF y% < minPix% THEN minPix% = y% : IF y% > maxPix% THEN maxPix% = y%
-    y% = YtoPix(SIN(2.0 * PI * ((g_days0 + d%) / P28))) : IF y% < minPix% THEN minPix% = y% : IF y% > maxPix% THEN maxPix% = y%
-    y% = YtoPix(SIN(2.0 * PI * ((g_days0 + d%) / P33))) : IF y% < minPix% THEN minPix% = y% : IF y% > maxPix% THEN maxPix% = y%
-  NEXT d%
-  pad% = 2
-  g_frame_y0% = minPix% - pad% : IF g_frame_y0% < g_plot_y0% THEN g_frame_y0% = g_plot_y0%
-  g_frame_y1% = maxPix% + pad% : IF g_frame_y1% > g_plot_y1% THEN g_frame_y1% = g_plot_y1%
-  IF g_frame_y1% < g_frame_y0% + 10 THEN g_frame_y1% = g_frame_y0% + 10
-END SUB
-
 SUB DoCalcDays0
   g_days0 = JDN(g_target_y%, g_target_m%, g_target_d%) - JDN(g_birth_y%, g_birth_m%, g_birth_d%)
 END SUB
@@ -295,7 +229,7 @@ SUB PlotCurves
 END SUB
 
 SUB DrawFrame
-  LOCAL x0%, x1%, d%, x%, gy!, y%
+  LOCAL x0%, x1%, d%, x%, y%
   LOCAL y1frame%
 
   x0% = MARGIN_L
@@ -364,7 +298,7 @@ SUB DrawLegendAndHeader
   ' ---- Legend: start below lifted border with clean spacing ----
   yLegendTop% = y1frame% + 18          ' gap under border
   COLOR COL_P23
-  TEXT x0%, yLegendTop% + 0 * (g_line_h% + 2), "Physical (23): "  + Pct1$(v23!) + "%"
+  TEXT x0%, yLegendTop% + 0 * (g_line_h% + 1), "Physical (23): "  + Pct1$(v23!) + "%"
   COLOR COL_P28
   TEXT x0%, yLegendTop% + 1 * (g_line_h% + 3), "Emotional(28): " + Pct1$(v28!) + "%"
   COLOR COL_P33
@@ -375,7 +309,6 @@ END SUB
 SUB DrawAll
   CLS
   ComputeLayout
-  'ComputeFrameFromData
   DrawFrame
   PlotCurves
   DrawLegendAndHeader
@@ -387,7 +320,6 @@ CLS
 COLOR COL_TEXT
 PRINT "*** Biorhythm Plotter ***"
 Print "-------------------------"
-dim dline$
 ' --- Birth date (read optional cfg, allow Enter to accept, save if changed) ---
 birth$ = ""
 

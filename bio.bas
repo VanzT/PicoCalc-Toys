@@ -31,12 +31,15 @@ CONST P23 = 23.0
 CONST P28 = 28.0
 CONST P33 = 33.0
 
+CONST CFG_FILE$ = "bio.cfg"
+
 ' -------------------- globals --------------------
 DIM g_birth_y%, g_birth_m%, g_birth_d%
 DIM g_target_y%, g_target_m%, g_target_d%
 DIM g_days0
 DIM p_y%, p_m%, p_d%
 DIM k$
+DIM ok%, tmp$, in$, birth$, line$
 
 ' Layout globals (computed each frame)
 DIM g_plot_y0%, g_plot_y1%     ' base plot band (fixed)
@@ -112,6 +115,52 @@ FUNCTION JDN(y%, m%, d%)
   j  = d% + ((153 * m2 + 2) \ 5) + 365 * y2 + (y2 \ 4) - (y2 \ 100) + (y2 \ 400) - 32045
   JDN = j
 END FUNCTION
+
+FUNCTION CfgLoadBirth$(def$)
+  LOCAL s$
+  IF MM.INFO(EXISTS FILE CFG_FILE$) THEN
+    OPEN CFG_FILE$ FOR INPUT AS #1
+    LINE INPUT #1, s$
+    CLOSE #1
+    IF ParseDateToYMD(s$) THEN
+      CfgLoadBirth$ = s$
+      EXIT FUNCTION
+    END IF
+  END IF
+  CfgLoadBirth$ = def$
+END FUNCTION
+
+
+SUB CfgSaveBirth(s$)
+  ' Overwrites (or creates) the cfg with the given date string
+  OPEN CFG_FILE$ FOR OUTPUT AS #1
+  PRINT #1, s$
+  CLOSE #1
+END SUB
+
+FUNCTION PromptBirthWithDefault$()
+  ' Shows prompt with default in brackets.
+  ' Enter = accept default; otherwise use typed value (validated).
+  LOCAL def$, s$
+  ' Use today as a fallback default if the cfg is missing/invalid
+  def$ = CfgLoadBirth$(DATE$)
+  DO
+    IF def$ <> "" THEN
+      PRINT "Birth Date (YYYY-MM-DD) ["; def$; "]: ";
+    ELSE
+      PRINT "Birth Date (YYYY-MM-DD): ";
+    END IF
+    LINE INPUT s$
+    s$ = Trim2$(s$)
+    IF s$ = "" THEN s$ = def$
+    IF ParseDateToYMD(s$) THEN
+      PromptBirthWithDefault$ = s$
+      EXIT FUNCTION
+    END IF
+    PRINT "Invalid date. Try again."
+  LOOP
+END FUNCTION
+
 
 SUB JDN_to_YMD(j, y%, m%, d%)
   LOCAL a, b, c, d1, e, m1
@@ -197,9 +246,6 @@ SUB ComputeLayout
   g_plot_y1% = HEIGHT - g_legend_h% - 10
   IF g_plot_y1% < g_plot_y0% + 40 THEN g_plot_y1% = g_plot_y0% + 40
 END SUB
-
-
-
 
 ' Frame that hugs the actually plotted pixels (with a tiny pad)
 SUB ComputeFrameFromData
@@ -339,20 +385,46 @@ END SUB
 Main:
 CLS
 COLOR COL_TEXT
-PRINT "Biorhythm Plotter"
+PRINT "*** Biorhythm Plotter ***"
+Print "-------------------------"
+dim dline$
+' --- Birth date (read optional cfg, allow Enter to accept, save if changed) ---
+birth$ = ""
 
-DIM ok%, tmp$, in$
+IF MM.INFO(EXISTS FILE CFG_FILE$) THEN
+  OPEN CFG_FILE$ FOR INPUT AS #1
+  LINE INPUT #1, dline$
+  CLOSE #1
+  IF ParseDateToYMD(dline$) THEN birth$ = dline$
+END IF
 
-PRINT "Enter birth date (YYYY-MM-DD): "
-LINE INPUT tmp$
-ok% = ParseDateToYMD(tmp$)
-IF ok% = 0 THEN PRINT "Invalid birth date.": END
+IF Trim2$(birth$) = "" THEN
+  PRINT "Birth date (YYYY-MM-DD): ";
+  LINE INPUT birth$
+  IF ParseDateToYMD(birth$) = 0 THEN PRINT "Invalid birth date.": END
+  OPEN CFG_FILE$ FOR OUTPUT AS #1 : PRINT #1, birth$ : CLOSE #1
+ELSE
+  PRINT "Birth date [" + birth$ + "]: ";
+  LINE INPUT dline$
+  dline$ = Trim2$(dline$)
+  IF dline$ <> "" THEN
+    IF ParseDateToYMD(dline$) = 0 THEN PRINT "Invalid birth date.": END
+    birth$ = dline$
+    OPEN CFG_FILE$ FOR OUTPUT AS #1 : PRINT #1, birth$ : CLOSE #1
+  ELSE
+    ' keep existing birth$ (already validated)
+    ' re-parse so p_y%/p_m%/p_d% reflect birth$
+    ok% = ParseDateToYMD(birth$)
+  END IF
+END IF
+
+' apply to globals from last successful ParseDateToYMD()
 g_birth_y% = p_y% : g_birth_m% = p_m% : g_birth_d% = p_d%
 
-PRINT "Enter target date (YYYY-MM-DD) or blank for today: "
+' --- Target date (blank = today) ---
+PRINT "Target date (YYYY-MM-DD): ";
 LINE INPUT in$
 IF Trim2$(in$) = "" THEN in$ = DATE$
-
 ok% = ParseDateToYMD(in$)
 IF ok% = 0 THEN PRINT "Invalid target date.": END
 g_target_y% = p_y% : g_target_m% = p_m% : g_target_d% = p_d%
@@ -360,6 +432,7 @@ g_target_y% = p_y% : g_target_m% = p_m% : g_target_d% = p_d%
 DoCalcDays0
 DrawAll
 
+' --- Key loop: ?/? to step, Q to return to menu ---
 DO
   k$ = INKEY$
 
@@ -381,5 +454,6 @@ DO
   PAUSE 10
 LOOP
 END
+
 
 

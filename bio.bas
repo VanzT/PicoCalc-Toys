@@ -249,33 +249,42 @@ SUB PlotCurves
 END SUB
 
 SUB DrawFrame
-  LOCAL x0%, x1%, d%, x%, gy!, y%, y1frame%
+  LOCAL x0%, x1%, d%, x%, gy!, y%
+  LOCAL y1frame%
+
   x0% = MARGIN_L
   x1% = WIDTH - MARGIN_R
-  y1frame% = g_plot_y1% - BORDER_BOTTOM_LIFT
+
+  ' --- raise the bottom border by 1 pixel ---
+  y1frame% = g_plot_y1% - BORDER_BOTTOM_LIFT - 3
   IF y1frame% < g_plot_y0% + 20 THEN y1frame% = g_plot_y0% + 20
 
-  ' vertical grid (skip outer edges)
+  ' --- vertical grid lines ---
   FOR d% = -15 TO 15 STEP 5
     x% = DayToX(d%)
     IF x% <> x0% AND x% <> x1% THEN
-      IF d% = 0 THEN COLOR COL_AXES ELSE COLOR COL_GRID
-      LINE x%, g_plot_y0%, x%, y1frame%
+      IF d% = 0 THEN
+        COLOR COL_AXES
+      ELSE
+        COLOR COL_GRID
+      END IF
+      ' Extend exactly to the inside edge of the bottom border (+1 pixel)
+      LINE x%, g_plot_y0%, x%, y1frame% + 15
     END IF
   NEXT d%
 
-  ' horizontal zero line (only if inside lifted frame)
+
+  ' --- horizontal zero line (if visible) ---
   y% = YtoPix(0.0)
   IF y% >= g_plot_y0% AND y% <= y1frame% THEN
     COLOR COL_ZERO
     LINE x0%, y%, x1%, y%
   END IF
 
-  ' frame on top, using lifted bottom
+  ' --- draw frame with lifted bottom ---
   COLOR COL_AXES
   BOX x0%, g_plot_y0%, x1%, y1frame%
 END SUB
-
 
 
 SUB DrawLegendAndHeader

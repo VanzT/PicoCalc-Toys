@@ -28,6 +28,15 @@ muthur.bas - very lame Alien-ish animation.  Terrible, is a kind description
 
 nostromo.bas - farily proud of this one.  Another Alien inspired animation
 
+othello.bas - what it sounds like.  Two player wifi only.
+
 rgb.bas - I put an 8 RGB LED strip inside my pico and this makes neat effects.
 Totally stolen from https://steinlaus.de/rgb-led-stick-fuer-den-picocalc/ and 
 they deserve all credit.
+
+sysinfo.bas - I just wanted to know my IP address without a lot of typing.  So 
+it is with a few extra things to make it seem more fancy than it really is.
+
+xfer.bas - a file transfer program to copy files between 2 PicoCalc devices.
+It uses UDP, so you know it's rock solid!  /s  Actually, it works pretty
+well for what it is.

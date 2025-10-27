@@ -1,6 +1,14 @@
 # PicoCalc-Toys
 
+With a generous helping of AI, I present:
+
 alien.bas - weak attempt at the motion tracker display from Alien
+
+bio.bas - remember the Biorhythm craze in the mid to late 70's?   I do,
+because I'm old. This takes the snake oil psudoscience into the new 
+millenium much to the delight of nobody.  Self-explanatory (or just 
+Google biorhythm and "learn" how silly people were in the 70's).
+Or just leave it on the screen and tell people you are hacking the Gibson.
 
 bkgmn.bas - playable "pass the device" Backgammon game
 

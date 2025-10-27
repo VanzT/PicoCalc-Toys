@@ -55,7 +55,7 @@ For sA% = 1 To mCount% - 1
 Next sA%
 
 ' timing: 0 = as fast as possible, ~2000 for ~2s total
-TOTAL_MS% = 1000
+TOTAL_MS% = 500
 stepsTotal% = mCount% * scrCols%
 If stepsTotal% < 1 Then stepsTotal% = 1
 If TOTAL_MS% <= 0 Then

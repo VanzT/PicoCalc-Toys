@@ -14,6 +14,8 @@ CONST CHUNK_BYTES%     = 100            ' raw bytes pre-hex; 512 -> 1024 hex cha
 CONST SEND_RETRY_MAX%  = 10
 CONST ACK_TIMEOUT_MS%  = 1200           ' per-chunk wait before retry
 CONST GLOBAL_POLL_MS%  = 10
+CONST MIN_MENU_REDRAW_MS% = 250  ' debounce window for redraws
+
 
 ' -------------------- globals (system/network) --------------------
 DIM g_udp_opened%
@@ -64,6 +66,15 @@ DIM msg_cmd$, msg_arg$, msg_ip$
 DIM work_file_size%, work_sum16%
 DIM work_chunk$
 
+DIM l1$, l2$, l3$
+DIM g_last_menu_draw_ms!         ' last time we drew the menu (ms)
+
+DIM g_connected%          ' 0=not confirmed, 1=confirmed with a peer
+DIM g_status$             ' one-line status shown on the menu
+DIM g_menu_dirty%         ' 1 when the menu needs a redraw
+DIM g_last_peer_str$      ' "ip name" cache for the menu
+DIM g_debug_silent%       ' 1 = suppress debug prints during transfer
+g_debug_silent% = 1
 
 
 ' ===========================================================================
@@ -256,13 +267,13 @@ END SUB
 ' ===========================================================================
 SUB BroadcastHello()
   LOCAL i%
-  PRINT "Broadcasting HELLO..."
+  'PRINT "Broadcasting HELLO..."
   FOR i% = 1 TO HELLO_REPEAT_CT%
     UdpSend "255.255.255.255", "HELLO|" + g_device_name$
     PAUSE HELLO_INTERVAL_MS%
   NEXT
   g_last_hello! = TIMER
-  PRINT "Done."
+  'PRINT "Done."
 END SUB
 
 SUB AnnouncePeer(ip$)
@@ -359,7 +370,7 @@ SUB MaybeResendChunk(peer_ip$)
   ENDIF
 
   s_retry_count% = s_retry_count% + 1
-  PRINT "Resend seq "; s_waiting_ack_seq%; " (attempt "; s_retry_count%; ")"
+  'PRINT "Resend seq "; s_waiting_ack_seq%; " (attempt "; s_retry_count%; ")"
 
   LOCAL resendPos%, takeBytes%, rawChunk$, hexChunk$
   resendPos%  = (s_waiting_ack_seq% - 1) * CHUNK_BYTES%
@@ -447,15 +458,24 @@ SUB HandleFileDone(from_ip$, arg$)
 
   CLOSE #8
   IF (r_recv_sum% AND &HFFFF) = (sum_i% AND &HFFFF) THEN
-    PRINT "Receive complete: "; r_target_path$
-    PRINT "Bytes: "; r_total_size%; "  Chunks: "; chunks_i%; "  Sum: "; HEX$(r_recv_sum%)
-    PRINT "Elapsed ~"; INT((TIMER - r_start_time!) ); " ms"
-    ' tell sender we are happy by echoing FILE_DONE back
+    ' success
     UdpSend from_ip$, "FILE_DONE|" + STR$(r_recv_sum%) + "|" + STR$(chunks_i%)
+
+    ' Build summary lines
+    LOCAL l1$, l2$, l3$
+    l1$ = "Received: " + r_target_path$
+    l2$ = "Bytes: " + STR$(r_total_size%) + "  Chunks: " + STR$(chunks_i%)
+    l3$ = "Checksum: " + HEX$(r_recv_sum%)
+    ShowSummaryAndWait "Transfer complete (receiver)", l1$, l2$, l3$
+
+    r_active% = 0
   ELSE
     PRINT "Checksum mismatch: got "; HEX$(r_recv_sum%); " expected "; HEX$(sum_i%)
     UdpSend from_ip$, "FILE_CANCEL|checksum"
+    r_active% = 0
+    MarkMenuDirty("Receive failed: checksum mismatch")
   ENDIF
+
   r_active% = 0
 END SUB
 
@@ -475,15 +495,66 @@ END SUB
 ' ===========================================================================
 '                                 UI
 ' ===========================================================================
-SUB ShowMenu()
+SUB ShowSummaryAndWait(title$, line1$, line2$, line3$)
+  LOCAL k$
+  CLS
+  PRINT title$
+  PRINT STRING$(LEN(title$), "-")
+  IF LEN(line1$) THEN PRINT line1$
+  IF LEN(line2$) THEN PRINT line2$
+  IF LEN(line3$) THEN PRINT line3$
+  PRINT
+  PRINT "Press any key to return to menu..."
+  DO
+    k$ = INKEY$
+    IF LEN(k$) THEN EXIT DO
+    PAUSE 10
+  LOOP
+  MarkMenuDirty("")
+END SUB
+
+SUB SetConnectionConfirmed(ip$, name$)
+  LOCAL newPeerStr$
+  newPeerStr$ = ip$ + "  " + name$
+
+  ' update only if something actually changed
+  IF g_connected% = 0 OR (newPeerStr$ <> g_last_peer_str$) THEN
+    g_connected% = 1
+    g_last_peer_str$ = newPeerStr$
+    MarkMenuDirty("Connection confirmed")
+  ENDIF
+END SUB
+
+SUB DrawMenu()
+  CLS
+  PRINT "PicoCalc UDP Discovery + File Transfer"
+  PRINT STRING$(34, "-")
+  IF g_connected% THEN
+    PRINT "Connection: Confirmed"
+    IF LEN(g_last_peer_str$) THEN PRINT "Peer: "; g_last_peer_str$
+  ELSE
+    PRINT "Connection: Searching..."
+    PRINT "(Press H to send beacons)"
+  ENDIF
+  IF LEN(g_status$) THEN
+    PRINT
+    PRINT "Status: "; g_status$
+  ENDIF
   PRINT
   PRINT "Keys:"
   PRINT "  H = HELLO beacons"
-  PRINT "  P = print last peer"
-  PRINT "  S = send a file to last peer"
-  PRINT "  W = passive listen 5s"
+  PRINT "  P = show peer"
+  PRINT "  S = send a file to peer"
+  PRINT "  W = listen 5s"
   PRINT "  Q = quit"
-  PRINT
+  g_menu_dirty% = 0
+  g_last_menu_draw_ms! = TIMER   ' record when we drew
+END SUB
+
+
+SUB MarkMenuDirty(status$)
+  g_status$ = status$
+  g_menu_dirty% = 1
 END SUB
 
 SUB PromptAndOffer()
@@ -534,7 +605,7 @@ g_broadcast_ip$ = "255.255.255.255"
 PRINT "Wi-Fi status: "; MM.INFO(TCPIP STATUS)
 PRINT "My IP: "; g_my_ip$
 PRINT "Name: "; g_device_name$
-ShowMenu
+DrawMenu
 
 ' initial gentle beaconing until a peer appears
 DO
@@ -548,13 +619,15 @@ DO
     DequeueMessage msg_cmd$, msg_arg$, msg_ip$
 
     IF msg_cmd$ = "HELLO" THEN
-      PRINT "HELLO from "; msg_ip$; "  name="; msg_arg$
       g_peer_ip$ = msg_ip$ : g_peer_name$ = msg_arg$ : g_peer_known% = 1
-      AnnouncePeer msg_ip$
+      SetConnectionConfirmed msg_ip$, msg_arg$
+
+
 
     ELSEIF msg_cmd$ = "PEER" THEN
-      PRINT "PEER from "; msg_ip$; "  name="; msg_arg$
       g_peer_ip$ = msg_ip$ : g_peer_name$ = msg_arg$ : g_peer_known% = 1
+      SetConnectionConfirmed msg_ip$, msg_arg$
+
 
     ELSEIF msg_cmd$ = "FILE_OFFER" THEN
       HandleFileOffer msg_ip$, msg_arg$
@@ -582,7 +655,7 @@ DO
           s_next_seq% = 1
           s_waiting_ack_seq% = 1
           s_retry_count% = 0
-          PRINT "Peer accepted. Sending "; msg_arg$; "..."
+          MarkMenuDirty("Sending " + msg_arg$ + "...")
           SendNextChunk msg_ip$
         ENDIF
       ENDIF
@@ -596,11 +669,17 @@ DO
     ELSEIF msg_cmd$ = "FILE_DONE" THEN
       IF r_active% THEN
         HandleFileDone msg_ip$, msg_arg$
-      ELSEIF s_active% THEN
-        PRINT "Transfer confirmed by receiver. Sum "; msg_arg$
-        CLOSE #9
-        s_active% = 0
-      ENDIF
+    ELSEIF s_active% THEN
+      CLOSE #9
+      ' Build sender summary (mirrors receiver UX)
+      l1$ = "Sent: " + s_file_basename$ + " ? " + msg_ip$
+      l2$ = "Bytes: " + STR$(s_file_size%) + "  Chunks: " + STR$(s_total_chunks%)
+      l3$ = "Checksum: " + HEX$(s_sent_sum%)
+      ShowSummaryAndWait "Transfer complete (sender)", l1$, l2$, l3$
+      s_active% = 0
+      MarkMenuDirty("")
+    END IF
+
 
     ELSEIF msg_cmd$ = "FILE_CANCEL" THEN
       HandleCancel msg_arg$
@@ -613,9 +692,13 @@ DO
   ' deferred reply (peer handshake) outside ISR
   IF pending_reply_needed% THEN
     UdpSend pending_reply_ip$, "PEER|" + pending_reply_name$
-    PRINT "Replied PEER to "; pending_reply_ip$
     pending_reply_needed% = 0
-  ENDIF
+    IF LEN(g_peer_ip$) = 0 THEN g_peer_ip$ = pending_reply_ip$
+    IF LEN(g_peer_name$) = 0 THEN g_peer_name$ = pending_reply_name$
+    SetConnectionConfirmed g_peer_ip$, g_peer_name$
+
+  END IF
+
 
   ' sender timeout handling
   IF s_active% THEN
@@ -639,9 +722,15 @@ DO
   ELSEIF g_key$ = "Q" OR g_key$ = "q" THEN
     EXIT DO
   ENDIF
-
+  IF g_menu_dirty% THEN
+    IF (TIMER - g_last_menu_draw_ms!) >= MIN_MENU_REDRAW_MS% THEN
+      DrawMenu
+    ENDIF
+  END IF
   PAUSE GLOBAL_POLL_MS%
 LOOP
 
 PRINT "Bye."
+Pause 2000
+run "B:menu.bas"
 END

@@ -16,7 +16,6 @@ CONST MODE_INPUT_VERB = 1
 CONST MODE_INPUT_NOUN = 2
 CONST MODE_DISPLAY_CLOCK = 3
 CONST MODE_SET_TIME = 4
-CONST MODE_SET_DATE = 5
 
 ' Global variables for input state
 DIM input_mode AS INTEGER
@@ -26,16 +25,17 @@ DIM verb_digits(1) AS INTEGER   ' Two digit verb entry
 DIM noun_digits(1) AS INTEGER   ' Two digit noun entry
 DIM digit_count AS INTEGER
 DIM last_key$ AS STRING
+DIM clock_reset AS INTEGER      ' Flag to reset clock display
 
 ' Clock input buffers
 DIM time_input(5) AS INTEGER    ' HHMMSS input buffer
-DIM date_input(5) AS INTEGER    ' DDMMYY input buffer
 
 input_mode = MODE_IDLE
 verb = 0
 noun = 0
 digit_count = 0
 last_key$ = ""
+clock_reset = 0
 
 ' Lamp state array (0=off, 1=lit)
 DIM lamp_state(13) AS INTEGER
@@ -694,37 +694,6 @@ SUB ProcessKey k$
         
       END IF
       
-    CASE MODE_SET_DATE
-      ' Setting date - accept 6 digits (DDMMYY)
-      IF k$ >= "0" AND k$ <= "9" AND digit_count < 6 THEN
-        date_input(digit_count) = VAL(k$)
-        digit_count = digit_count + 1
-        DisplayDateInput
-        
-        ' Auto-execute when 6 digits entered
-        IF digit_count = 6 THEN
-          SetDateFromInput
-          ' Turn off KEY REL if input was successful
-          IF input_mode = MODE_IDLE THEN
-            lamp_state(6) = 0
-            UpdateSingleLamp 6
-          END IF
-        END IF
-        
-      ELSE IF k$ = "C" OR k$ = "K" THEN
-        ' CLEAR/RESET key - cancel
-        input_mode = MODE_IDLE
-        digit_count = 0
-        ' Turn off KEY REL lamp
-        lamp_state(6) = 0
-        UpdateSingleLamp 6
-        ' Turn off OPR ERR if it was on
-        lamp_state(8) = 0
-        UpdateSingleLamp 8
-        ClearDataRegisters
-        
-      END IF
-      
   END SELECT
 END SUB
 
@@ -740,6 +709,7 @@ SUB ExecuteVerbNoun
   ' V16N36 - Display Clock Time
   IF verb = 16 AND noun = 36 THEN
     input_mode = MODE_DISPLAY_CLOCK
+    clock_reset = 1  ' Force all registers to display
   END IF
   
   ' V21N36 - Set Time
@@ -749,20 +719,6 @@ SUB ExecuteVerbNoun
     ' Clear input buffer
     FOR i = 0 TO 5
       time_input(i) = 0
-    NEXT i
-    ' Turn on KEY REL lamp to indicate input mode
-    lamp_state(6) = 1
-    UpdateSingleLamp 6
-    UpdateVerbDisplay
-  END IF
-  
-  ' V21N37 - Set Date
-  IF verb = 21 AND noun = 37 THEN
-    input_mode = MODE_SET_DATE
-    digit_count = 0
-    ' Clear input buffer
-    FOR i = 0 TO 5
-      date_input(i) = 0
     NEXT i
     ' Turn on KEY REL lamp to indicate input mode
     lamp_state(6) = 1
@@ -984,9 +940,10 @@ SUB UpdateClockDisplay
   LOCAL data1_y = row3_y + 18
   LOCAL data2_y = data1_y + row_spacing
   LOCAL data3_y = data2_y + row_spacing
-  STATIC last_sec AS INTEGER
-  STATIC last_min AS INTEGER
-  STATIC last_hr AS INTEGER
+  STATIC last_sec AS INTEGER = -1
+  STATIC last_min AS INTEGER = -1
+  STATIC last_hr AS INTEGER = -1
+  STATIC comp_off_time AS INTEGER
   
   ' Get current time
   t$ = TIME$
@@ -994,13 +951,47 @@ SUB UpdateClockDisplay
   m = VAL(MID$(t$, 4, 2))
   s = VAL(RIGHT$(t$, 2))
   
+  ' Check if we need to reset (force display of all registers)
+  IF clock_reset = 1 THEN
+    last_sec = -1
+    last_min = -1
+    last_hr = -1
+    clock_reset = 0  ' Clear the flag
+  END IF
+  
   ' Only update display once per second (when seconds change)
-  IF s = last_sec THEN EXIT SUB
+  IF s = last_sec THEN
+    ' Not a new second yet - check if we need to turn off COMP ACTY
+    IF TIMER >= comp_off_time AND comp_off_time > 0 THEN
+      DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_OFF
+      comp_off_time = 0  ' Mark as handled
+    END IF
+    EXIT SUB
+  END IF
   last_sec = s
   
-  ' Blink COMP ACTY lamp briefly on each second
-  ' Turn on COMP ACTY (it's on the right panel, not in lamp_state array)
+  ' Schedule COMP ACTY to turn on 400ms from now
+  LOCAL comp_acty_on_time = TIMER + 400
+  LOCAL temp_key$
+  
+  ' Wait until 400ms have passed to turn on COMP ACTY
+  ' BUT check for V or N key to allow immediate exit
+  DO WHILE TIMER < comp_acty_on_time
+    temp_key$ = INKEY$
+    IF temp_key$ = "V" OR temp_key$ = "v" OR temp_key$ = "N" OR temp_key$ = "n" THEN
+      ' User wants to enter a verb or noun - exit clock mode immediately
+      input_mode = MODE_IDLE
+      ProcessKey UCASE$(temp_key$)
+      EXIT SUB
+    END IF
+    PAUSE 10
+  LOOP
+  
+  ' Now turn on COMP ACTY
   DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_GREEN
+  
+  ' Schedule it to turn off 200ms later
+  comp_off_time = TIMER + 200
   
   ' Only redraw hours if they changed
   IF h <> last_hr THEN
@@ -1034,12 +1025,6 @@ SUB UpdateClockDisplay
   DrawSevenSegDigit PANEL_X2+75, data3_y+line_offset, digit_w, digit_h, "0", 1
   DrawSevenSegDigit PANEL_X2+96, data3_y+line_offset, digit_w, digit_h, STR$((s \ 10) MOD 10), 1
   DrawSevenSegDigit PANEL_X2+117, data3_y+line_offset, digit_w, digit_h, STR$(s MOD 10), 1
-  
-  ' Brief pause with COMP ACTY on
-  PAUSE 100
-  
-  ' Turn off COMP ACTY
-  DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_OFF
 END SUB
 
 ' ========================================
@@ -1065,37 +1050,6 @@ SUB SetTimeFromInput
   ' Format and set time
   time_str$ = RIGHT$("0" + STR$(h), 2) + ":" + RIGHT$("0" + STR$(m), 2) + ":00"
   TIME$ = time_str$
-  
-  ' Return to idle mode (successful)
-  input_mode = MODE_IDLE
-  
-  ' Clear the input display
-  ClearDataRegisters
-END SUB
-
-' ========================================
-' Set Date Function (V21N37)
-' ========================================
-SUB SetDateFromInput
-  LOCAL d, m, y, date_str$
-  
-  ' Build date from 6 digits: DDMMYY
-  d = date_input(0) * 10 + date_input(1)
-  m = date_input(2) * 10 + date_input(3)
-  y = date_input(4) * 10 + date_input(5)
-  
-  ' Validate ranges (basic check)
-  IF d < 1 OR d > 31 OR m < 1 OR m > 12 THEN
-    ' Turn on OPR ERR lamp to indicate invalid input
-    lamp_state(8) = 1
-    UpdateSingleLamp 8
-    ' Stay in input mode so user can press K to reset
-    EXIT SUB
-  END IF
-  
-  ' Format and set date (DD-MM-YY format)
-  date_str$ = RIGHT$("0" + STR$(d), 2) + "-" + RIGHT$("0" + STR$(m), 2) + "-" + RIGHT$("0" + STR$(y), 2)
-  DATE$ = date_str$
   
   ' Return to idle mode (successful)
   input_mode = MODE_IDLE
@@ -1142,26 +1096,5 @@ SUB DisplayTimeInput
   
   FOR i = 0 TO digit_count - 1
     DrawSevenSegDigit PANEL_X2+33+(i*17), data2_y+line_offset, digit_w, digit_h, STR$(time_input(i)), 1
-  NEXT i
-END SUB
-
-' ========================================
-' Display Date Input in Progress
-' ========================================
-SUB DisplayDateInput
-  LOCAL i
-  LOCAL row_h = 62
-  LOCAL digit_w = 18
-  LOCAL digit_h = 30
-  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
-  LOCAL row_spacing = 56
-  LOCAL line_offset = 10
-  LOCAL data2_y = row3_y + 18 + row_spacing
-  
-  ' Show input in R2 (middle row)
-  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
-  
-  FOR i = 0 TO digit_count - 1
-    DrawSevenSegDigit PANEL_X2+33+(i*17), data2_y+line_offset, digit_w, digit_h, STR$(date_input(i)), 1
   NEXT i
 END SUB

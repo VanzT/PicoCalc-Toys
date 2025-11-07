@@ -14,6 +14,9 @@ CONST PANEL_H = 310          ' Panel height (full screen)
 CONST MODE_IDLE = 0
 CONST MODE_INPUT_VERB = 1
 CONST MODE_INPUT_NOUN = 2
+CONST MODE_DISPLAY_CLOCK = 3
+CONST MODE_SET_TIME = 4
+CONST MODE_SET_DATE = 5
 
 ' Global variables for input state
 DIM input_mode AS INTEGER
@@ -23,6 +26,10 @@ DIM verb_digits(1) AS INTEGER   ' Two digit verb entry
 DIM noun_digits(1) AS INTEGER   ' Two digit noun entry
 DIM digit_count AS INTEGER
 DIM last_key$ AS STRING
+
+' Clock input buffers
+DIM time_input(5) AS INTEGER    ' HHMMSS input buffer
+DIM date_input(5) AS INTEGER    ' DDMMYY input buffer
 
 input_mode = MODE_IDLE
 verb = 0
@@ -45,7 +52,7 @@ CONST CLR_WHITE = RGB(255, 255, 255)
 CONST CLR_GRAY = RGB(140, 140, 140)
 CONST CLR_OFF = RGB(100, 100, 100)
 CONST CLR_GREEN = RGB(0, 255, 0)
-CONST CLR_DIM_GREEN = RGB(0, 50, 0)
+CONST CLR_DIM_GREEN = RGB(0, 15, 0)
 CONST CLR_BLACK = RGB(0, 0, 0)
 CONST CLR_DISPLAY_BG = RGB(20, 40, 20)
 
@@ -71,7 +78,13 @@ DO
     ProcessKey k$
   END IF
   
-  PAUSE 50  ' Small delay to prevent CPU hogging
+  ' Update clock display if in display mode
+  IF input_mode = MODE_DISPLAY_CLOCK THEN
+    UpdateClockDisplay
+    PAUSE 100  ' Update 10 times per second
+  ELSE
+    PAUSE 50  ' Normal delay
+  END IF
 LOOP
 
 END
@@ -503,49 +516,49 @@ SUB DrawSevenSegDigit x, y, w, h, digit$, lit
   IF segs(0) = 1 THEN
     BOX x+seg_w, y, w-2*seg_w, seg_h, 0, , clr
   ELSE
-    BOX x+seg_w, y, w-2*seg_w, seg_h, 0, , CLR_DIM_GREEN
+    BOX x+seg_w, y, w-2*seg_w, seg_h, 0, , RGB(80, 80, 80)
   END IF
   
   ' Segment b (top right)
   IF segs(1) = 1 THEN
     BOX x+w-seg_w, y+seg_h, seg_w, half_h-seg_h, 0, , clr
   ELSE
-    BOX x+w-seg_w, y+seg_h, seg_w, half_h-seg_h, 0, , CLR_DIM_GREEN
+    BOX x+w-seg_w, y+seg_h, seg_w, half_h-seg_h, 0, , RGB(80, 80, 80)
   END IF
   
   ' Segment c (bottom right)
   IF segs(2) = 1 THEN
     BOX x+w-seg_w, y+half_h, seg_w, half_h-seg_h, 0, , clr
   ELSE
-    BOX x+w-seg_w, y+half_h, seg_w, half_h-seg_h, 0, , CLR_DIM_GREEN
+    BOX x+w-seg_w, y+half_h, seg_w, half_h-seg_h, 0, , RGB(80, 80, 80)
   END IF
   
   ' Segment d (bottom)
   IF segs(3) = 1 THEN
     BOX x+seg_w, y+h-seg_h, w-2*seg_w, seg_h, 0, , clr
   ELSE
-    BOX x+seg_w, y+h-seg_h, w-2*seg_w, seg_h, 0, , CLR_DIM_GREEN
+    BOX x+seg_w, y+h-seg_h, w-2*seg_w, seg_h, 0, , RGB(80, 80, 80)
   END IF
   
   ' Segment e (bottom left)
   IF segs(4) = 1 THEN
     BOX x, y+half_h, seg_w, half_h-seg_h, 0, , clr
   ELSE
-    BOX x, y+half_h, seg_w, half_h-seg_h, 0, , CLR_DIM_GREEN
+    BOX x, y+half_h, seg_w, half_h-seg_h, 0, , RGB(80, 80, 80)
   END IF
   
   ' Segment f (top left)
   IF segs(5) = 1 THEN
     BOX x, y+seg_h, seg_w, half_h-seg_h, 0, , clr
   ELSE
-    BOX x, y+seg_h, seg_w, half_h-seg_h, 0, , CLR_DIM_GREEN
+    BOX x, y+seg_h, seg_w, half_h-seg_h, 0, , RGB(80, 80, 80)
   END IF
   
   ' Segment g (middle)
   IF segs(6) = 1 THEN
     BOX x+seg_w, y+half_h-seg_h/2, w-2*seg_w, seg_h, 0, , clr
   ELSE
-    BOX x+seg_w, y+half_h-seg_h/2, w-2*seg_w, seg_h, 0, , CLR_DIM_GREEN
+    BOX x+seg_w, y+half_h-seg_h/2, w-2*seg_w, seg_h, 0, , RGB(80, 80, 80)
   END IF
 END SUB
 
@@ -622,6 +635,51 @@ SUB ProcessKey k$
         
       END IF
       
+    CASE MODE_DISPLAY_CLOCK
+      ' Displaying clock - any key exits
+      input_mode = MODE_IDLE
+      ClearDataRegisters
+      
+    CASE MODE_SET_TIME
+      ' Setting time - accept 4 digits (HHMM), seconds set to 00
+      IF k$ >= "0" AND k$ <= "9" AND digit_count < 4 THEN
+        time_input(digit_count) = VAL(k$)
+        digit_count = digit_count + 1
+        DisplayTimeInput
+        
+        ' Auto-execute when 4 digits entered
+        IF digit_count = 4 THEN
+          SetTimeFromInput
+        END IF
+        
+      ELSE IF k$ = "C" THEN
+        ' CLEAR key - cancel
+        input_mode = MODE_IDLE
+        digit_count = 0
+        ClearDataRegisters
+        
+      END IF
+      
+    CASE MODE_SET_DATE
+      ' Setting date - accept 6 digits (DDMMYY)
+      IF k$ >= "0" AND k$ <= "9" AND digit_count < 6 THEN
+        date_input(digit_count) = VAL(k$)
+        digit_count = digit_count + 1
+        DisplayDateInput
+        
+        ' Auto-execute when 6 digits entered
+        IF digit_count = 6 THEN
+          SetDateFromInput
+        END IF
+        
+      ELSE IF k$ = "C" THEN
+        ' CLEAR key - cancel
+        input_mode = MODE_IDLE
+        digit_count = 0
+        ClearDataRegisters
+        
+      END IF
+      
   END SELECT
 END SUB
 
@@ -632,6 +690,35 @@ SUB ExecuteVerbNoun
   ' V35N00 - Lamp Test
   IF verb = 35 AND noun = 0 THEN
     ExecuteLampTest
+  END IF
+  
+  ' V16N36 - Display Clock Time
+  IF verb = 16 AND noun = 36 THEN
+    input_mode = MODE_DISPLAY_CLOCK
+  END IF
+  
+  ' V21N36 - Set Time
+  IF verb = 21 AND noun = 36 THEN
+    input_mode = MODE_SET_TIME
+    digit_count = 0
+    ' Clear input buffer
+    FOR i = 0 TO 5
+      time_input(i) = 0
+    NEXT i
+    ' Flash VERB lamp to indicate input mode
+    UpdateVerbDisplay
+  END IF
+  
+  ' V21N37 - Set Date
+  IF verb = 21 AND noun = 37 THEN
+    input_mode = MODE_SET_DATE
+    digit_count = 0
+    ' Clear input buffer
+    FOR i = 0 TO 5
+      date_input(i) = 0
+    NEXT i
+    ' Flash VERB lamp to indicate input mode
+    UpdateVerbDisplay
   END IF
 END SUB
 
@@ -832,4 +919,204 @@ SUB UpdateNounDisplay
   ' Draw the two digits
   DrawSevenSegDigit PANEL_X2+89, row2_y+32, digit_w, digit_h, STR$(noun_digits(0)), 1
   DrawSevenSegDigit PANEL_X2+110, row2_y+32, digit_w, digit_h, STR$(noun_digits(1)), 1
+END SUB
+
+' ========================================
+' Update Clock Display (V16N36)
+' ========================================
+SUB UpdateClockDisplay
+  LOCAL t$, h, m, s
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  LOCAL data3_y = data2_y + row_spacing
+  STATIC last_sec AS INTEGER
+  STATIC last_min AS INTEGER
+  STATIC last_hr AS INTEGER
+  
+  ' Get current time
+  t$ = TIME$
+  h = VAL(LEFT$(t$, 2))
+  m = VAL(MID$(t$, 4, 2))
+  s = VAL(RIGHT$(t$, 2))
+  
+  ' Only update display once per second (when seconds change)
+  IF s = last_sec THEN EXIT SUB
+  last_sec = s
+  
+  ' Blink COMP ACTY lamp briefly on each second
+  ' Turn on COMP ACTY (it's on the right panel, not in lamp_state array)
+  DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_GREEN
+  
+  ' Only redraw hours if they changed
+  IF h <> last_hr THEN
+    last_hr = h
+    ' R1: Hours (00-23) with leading zeros: 00000-00023
+    BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+    DrawSevenSegDigit PANEL_X2+33, data1_y+line_offset, digit_w, digit_h, "0", 1
+    DrawSevenSegDigit PANEL_X2+54, data1_y+line_offset, digit_w, digit_h, "0", 1
+    DrawSevenSegDigit PANEL_X2+75, data1_y+line_offset, digit_w, digit_h, "0", 1
+    DrawSevenSegDigit PANEL_X2+96, data1_y+line_offset, digit_w, digit_h, STR$((h \ 10) MOD 10), 1
+    DrawSevenSegDigit PANEL_X2+117, data1_y+line_offset, digit_w, digit_h, STR$(h MOD 10), 1
+  END IF
+  
+  ' Only redraw minutes if they changed
+  IF m <> last_min THEN
+    last_min = m
+    ' R2: Minutes (00-59) with leading zeros: 00000-00059
+    BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+    DrawSevenSegDigit PANEL_X2+33, data2_y+line_offset, digit_w, digit_h, "0", 1
+    DrawSevenSegDigit PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, "0", 1
+    DrawSevenSegDigit PANEL_X2+75, data2_y+line_offset, digit_w, digit_h, "0", 1
+    DrawSevenSegDigit PANEL_X2+96, data2_y+line_offset, digit_w, digit_h, STR$((m \ 10) MOD 10), 1
+    DrawSevenSegDigit PANEL_X2+117, data2_y+line_offset, digit_w, digit_h, STR$(m MOD 10), 1
+  END IF
+  
+  ' Always redraw seconds (they change every time we get here)
+  ' R3: Seconds (00-59) with leading zeros: 00000-00059
+  BOX PANEL_X2+33, data3_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  DrawSevenSegDigit PANEL_X2+33, data3_y+line_offset, digit_w, digit_h, "0", 1
+  DrawSevenSegDigit PANEL_X2+54, data3_y+line_offset, digit_w, digit_h, "0", 1
+  DrawSevenSegDigit PANEL_X2+75, data3_y+line_offset, digit_w, digit_h, "0", 1
+  DrawSevenSegDigit PANEL_X2+96, data3_y+line_offset, digit_w, digit_h, STR$((s \ 10) MOD 10), 1
+  DrawSevenSegDigit PANEL_X2+117, data3_y+line_offset, digit_w, digit_h, STR$(s MOD 10), 1
+  
+  ' Brief pause with COMP ACTY on
+  PAUSE 100
+  
+  ' Turn off COMP ACTY
+  DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_OFF
+END SUB
+
+' ========================================
+' Set Time Function (V21N36)
+' ========================================
+SUB SetTimeFromInput
+  LOCAL h, m, s, time_str$
+  
+  ' Build time from 4 digits: HHMM (seconds = 00)
+  h = time_input(0) * 10 + time_input(1)
+  m = time_input(2) * 10 + time_input(3)
+  s = 0  ' Seconds always 00
+  
+  ' Validate ranges
+  IF h > 23 OR m > 59 THEN
+    ' Flash OPR ERR lamp to indicate invalid input
+    lamp_state(8) = 1
+    UpdateSingleLamp 8
+    PAUSE 1000
+    lamp_state(8) = 0
+    UpdateSingleLamp 8
+    EXIT SUB
+  END IF
+  
+  ' Format and set time
+  time_str$ = RIGHT$("0" + STR$(h), 2) + ":" + RIGHT$("0" + STR$(m), 2) + ":00"
+  TIME$ = time_str$
+  
+  ' Return to idle mode
+  input_mode = MODE_IDLE
+  
+  ' Clear the input display
+  ClearDataRegisters
+END SUB
+
+' ========================================
+' Set Date Function (V21N37)
+' ========================================
+SUB SetDateFromInput
+  LOCAL d, m, y, date_str$
+  
+  ' Build date from 6 digits: DDMMYY
+  d = date_input(0) * 10 + date_input(1)
+  m = date_input(2) * 10 + date_input(3)
+  y = date_input(4) * 10 + date_input(5)
+  
+  ' Validate ranges (basic check)
+  IF d < 1 OR d > 31 OR m < 1 OR m > 12 THEN
+    ' Flash OPR ERR lamp to indicate invalid input
+    lamp_state(8) = 1
+    UpdateSingleLamp 8
+    PAUSE 1000
+    lamp_state(8) = 0
+    UpdateSingleLamp 8
+    EXIT SUB
+  END IF
+  
+  ' Format and set date (DD-MM-YY format)
+  date_str$ = RIGHT$("0" + STR$(d), 2) + "-" + RIGHT$("0" + STR$(m), 2) + "-" + RIGHT$("0" + STR$(y), 2)
+  DATE$ = date_str$
+  
+  ' Return to idle mode
+  input_mode = MODE_IDLE
+  
+  ' Clear the input display
+  ClearDataRegisters
+END SUB
+
+' ========================================
+' Clear Data Registers
+' ========================================
+SUB ClearDataRegisters
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  LOCAL data3_y = data2_y + row_spacing
+  
+  ' Clear all three data rows
+  BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  BOX PANEL_X2+33, data3_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+END SUB
+
+' ========================================
+' Display Time Input in Progress
+' ========================================
+SUB DisplayTimeInput
+  LOCAL i
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data2_y = row3_y + 18 + row_spacing
+  
+  ' Show input in R2 (middle row)
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  
+  FOR i = 0 TO digit_count - 1
+    DrawSevenSegDigit PANEL_X2+33+(i*17), data2_y+line_offset, digit_w, digit_h, STR$(time_input(i)), 1
+  NEXT i
+END SUB
+
+' ========================================
+' Display Date Input in Progress
+' ========================================
+SUB DisplayDateInput
+  LOCAL i
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data2_y = row3_y + 18 + row_spacing
+  
+  ' Show input in R2 (middle row)
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  
+  FOR i = 0 TO digit_count - 1
+    DrawSevenSegDigit PANEL_X2+33+(i*17), data2_y+line_offset, digit_w, digit_h, STR$(date_input(i)), 1
+  NEXT i
 END SUB

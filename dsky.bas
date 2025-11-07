@@ -16,6 +16,12 @@ CONST MODE_INPUT_VERB = 1
 CONST MODE_INPUT_NOUN = 2
 CONST MODE_DISPLAY_CLOCK = 3
 CONST MODE_SET_TIME = 4
+CONST MODE_LUNAR_DESCENT = 5
+
+' V16 N68 - Lunar Descent Data Arrays
+DIM descent_time_keys(17) AS INTEGER    ' Audio time in deciseconds
+DIM descent_alt_keys(17) AS INTEGER     ' Altitude in feet
+DIM descent_rate_keys(17) AS INTEGER    ' Descent rate in ft/sec (negative)
 
 ' Global variables for input state
 DIM input_mode AS INTEGER
@@ -712,6 +718,20 @@ SUB ExecuteVerbNoun
     clock_reset = 1  ' Force all registers to display
   END IF
   
+  ' V16N68 - Lunar Powered Descent Simulation
+  IF verb = 16 AND noun = 68 THEN
+    input_mode = MODE_LUNAR_DESCENT
+    ' Update verb and noun displays
+    verb_digits(0) = 1
+    verb_digits(1) = 6
+    noun_digits(0) = 6
+    noun_digits(1) = 8
+    UpdateVerbDisplay
+    UpdateNounDisplay
+    ' Start simulation
+    RunLunarDescent
+  END IF
+  
   ' V21N36 - Set Time
   IF verb = 21 AND noun = 36 THEN
     input_mode = MODE_SET_TIME
@@ -1097,4 +1117,370 @@ SUB DisplayTimeInput
   FOR i = 0 TO digit_count - 1
     DrawSevenSegDigit PANEL_X2+33+(i*17), data2_y+line_offset, digit_w, digit_h, STR$(time_input(i)), 1
   NEXT i
+END SUB
+
+' ========================================
+' V16 N68 - Initialize Lunar Descent Data
+' ========================================
+SUB InitLunarDescentData
+  ' Keyframe data based on actual audio callouts
+  ' Time in deciseconds (tenths of second)
+  
+  descent_time_keys(0) = 0      ' 00:00 - Start
+  descent_alt_keys(0) = 3500
+  descent_rate_keys(0) = -100
+  
+  descent_time_keys(1) = 10     ' 00:01 - "Go for landing"
+  descent_alt_keys(1) = 3500
+  descent_rate_keys(1) = -100
+  
+  descent_time_keys(2) = 70     ' 00:07 - "3000 feet"
+  descent_alt_keys(2) = 3000
+  descent_rate_keys(2) = -100
+  
+  descent_time_keys(3) = 90     ' 00:09 - 1201 alarm starts
+  descent_alt_keys(3) = 2900
+  descent_rate_keys(3) = -100
+  
+  descent_time_keys(4) = 210    ' 00:21 - "2000 feet"
+  descent_alt_keys(4) = 2000
+  descent_rate_keys(4) = -100
+  
+  descent_time_keys(5) = 480    ' 00:48 - 1202 alarm
+  descent_alt_keys(5) = 1200
+  descent_rate_keys(5) = -80
+  
+  descent_time_keys(6) = 570    ' 00:57 - "700 feet, 21 down"
+  descent_alt_keys(6) = 700
+  descent_rate_keys(6) = -70
+  
+  descent_time_keys(7) = 650    ' 01:05 - "540 feet"
+  descent_alt_keys(7) = 540
+  descent_rate_keys(7) = -60
+  
+  descent_time_keys(8) = 970    ' 01:37 - "300 feet"
+  descent_alt_keys(8) = 300
+  descent_rate_keys(8) = -40
+  
+  descent_time_keys(9) = 1070   ' 01:47 - "70"
+  descent_alt_keys(9) = 200
+  descent_rate_keys(9) = -30
+  
+  descent_time_keys(10) = 1340  ' 02:14 - "200 feet"
+  descent_alt_keys(10) = 200
+  descent_rate_keys(10) = -20
+  
+  descent_time_keys(11) = 1550  ' 02:35 - "100 feet"
+  descent_alt_keys(11) = 100
+  descent_rate_keys(11) = -10
+  
+  descent_time_keys(12) = 1640  ' 02:44 - "74 feet"
+  descent_alt_keys(12) = 74
+  descent_rate_keys(12) = -8
+  
+  descent_time_keys(13) = 1900  ' 03:10 - "30 feet"
+  descent_alt_keys(13) = 30
+  descent_rate_keys(13) = -3
+  
+  descent_time_keys(14) = 2090  ' 03:29 - "Contact light"
+  descent_alt_keys(14) = 5
+  descent_rate_keys(14) = -1
+  
+  descent_time_keys(15) = 2150  ' 03:35 - Touchdown
+  descent_alt_keys(15) = 0
+  descent_rate_keys(15) = 0
+  
+  descent_time_keys(16) = 2300  ' 03:50 - Hold
+  descent_alt_keys(16) = 0
+  descent_rate_keys(16) = 0
+  
+  descent_time_keys(17) = 2440  ' 04:04 - End
+  descent_alt_keys(17) = 0
+  descent_rate_keys(17) = 0
+END SUB
+
+' ========================================
+' V16 N68 - Main Lunar Descent Simulation
+' ========================================
+SUB RunLunarDescent
+  InitLunarDescentData
+  
+  ' Clear data registers
+  ClearDataRegisters
+  
+  ' Start audio
+  PLAY FLAC "a11_descent.flac"
+  
+  LOCAL audio_start = TIMER
+  LOCAL last_comp_blink = TIMER
+  LOCAL comp_state = 0
+  
+  ' Alarm tracking
+  LOCAL in_alarm = 0
+  LOCAL alarm_blink_state = 0
+  LOCAL alarm_blink_timer = TIMER
+  LOCAL alarm_type = 0  ' 1=1201, 2=1202
+  
+  ' Loop variables
+  LOCAL elapsed_ds
+  LOCAL k$
+  LOCAL altitude
+  LOCAL desc_rate
+  LOCAL pdi_seconds
+  
+  ' Main simulation loop
+  DO WHILE MM.INFO$(SOUND) <> "OFF"
+    ' Calculate elapsed time in deciseconds
+    elapsed_ds = (TIMER - audio_start) / 100
+    
+    ' Check for keyboard interrupt (V, N, K, or C keys)
+    k$ = INKEY$
+    IF k$ = "V" OR k$ = "v" OR k$ = "N" OR k$ = "n" OR k$ = "K" OR k$ = "k" OR k$ = "C" OR k$ = "c" THEN
+      PLAY STOP
+      input_mode = MODE_IDLE
+      ' Turn off RESTART lamp
+      lamp_state(7) = 0
+      UpdateSingleLamp 7
+      ProcessKey UCASE$(k$)
+      EXIT SUB
+    END IF
+    
+    ' Check for alarm periods
+    in_alarm = 0
+    alarm_type = 0
+    
+    ' 1201 alarm from 0:09 to 0:15 (90-150 deciseconds)
+    IF elapsed_ds >= 90 AND elapsed_ds < 150 THEN
+      in_alarm = 1
+      alarm_type = 1
+    END IF
+    
+    ' 1202 alarm from 0:48 to 0:51 (480-510 deciseconds)
+    IF elapsed_ds >= 480 AND elapsed_ds < 510 THEN
+      in_alarm = 1
+      alarm_type = 2
+    END IF
+    
+    ' Handle alarm display
+    IF in_alarm = 1 THEN
+      ' Blink alarm code in R1 and R2, and blink RESTART lamp
+      IF TIMER - alarm_blink_timer >= 500 THEN
+        alarm_blink_state = 1 - alarm_blink_state
+        alarm_blink_timer = TIMER
+        
+        IF alarm_blink_state = 1 THEN
+          ' Show alarm code
+          IF alarm_type = 1 THEN
+            DisplayAlarmCode 1201
+          ELSE
+            DisplayAlarmCode 1202
+          END IF
+          ' Turn on RESTART lamp (yellow)
+          lamp_state(7) = 1
+          UpdateSingleLamp 7
+        ELSE
+          ' Blank R1 and R2
+          ClearRegisters12
+          ' Turn off RESTART lamp
+          lamp_state(7) = 0
+          UpdateSingleLamp 7
+        END IF
+      END IF
+    ELSE
+      ' Normal display - interpolate and show values
+      altitude = InterpolateAltitude(elapsed_ds)
+      desc_rate = InterpolateDescentRate(elapsed_ds)
+      
+      ' PDI time in seconds (R1 just tracks elapsed audio time as seconds)
+      pdi_seconds = elapsed_ds / 10
+      
+      ' Update displays
+      UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+    END IF
+    
+    ' COMP ACTY blinking (every 2 seconds)
+    IF TIMER - last_comp_blink >= 2000 THEN
+      comp_state = 1 - comp_state
+      IF comp_state = 1 THEN
+        DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, 58, "COMP~ACTY", CLR_GREEN
+      ELSE
+        DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, 58, "COMP~ACTY", CLR_OFF
+      END IF
+      last_comp_blink = TIMER
+    END IF
+    
+    PAUSE 10
+  LOOP
+  
+  ' Simulation complete
+  input_mode = MODE_IDLE
+  ' Turn off RESTART lamp
+  lamp_state(7) = 0
+  UpdateSingleLamp 7
+END SUB
+
+' ========================================
+' Interpolate Altitude Value
+' ========================================
+FUNCTION InterpolateAltitude(current_time)
+  LOCAL i, t1, t2, v1, v2, fraction
+  
+  ' Find which keyframe pair we're between
+  FOR i = 0 TO 16
+    IF current_time >= descent_time_keys(i) AND current_time <= descent_time_keys(i+1) THEN
+      t1 = descent_time_keys(i)
+      t2 = descent_time_keys(i+1)
+      v1 = descent_alt_keys(i)
+      v2 = descent_alt_keys(i+1)
+      
+      ' Calculate interpolation fraction
+      IF t2 - t1 > 0 THEN
+        fraction = (current_time - t1) / (t2 - t1)
+      ELSE
+        fraction = 0
+      END IF
+      
+      ' Linear interpolation
+      InterpolateAltitude = v1 + (v2 - v1) * fraction
+      EXIT FUNCTION
+    END IF
+  NEXT i
+  
+  ' If past last keyframe, return last value
+  InterpolateAltitude = descent_alt_keys(17)
+END FUNCTION
+
+' ========================================
+' Interpolate Descent Rate Value
+' ========================================
+FUNCTION InterpolateDescentRate(current_time)
+  LOCAL i, t1, t2, v1, v2, fraction
+  
+  ' Find which keyframe pair we're between
+  FOR i = 0 TO 16
+    IF current_time >= descent_time_keys(i) AND current_time <= descent_time_keys(i+1) THEN
+      t1 = descent_time_keys(i)
+      t2 = descent_time_keys(i+1)
+      v1 = descent_rate_keys(i)
+      v2 = descent_rate_keys(i+1)
+      
+      ' Calculate interpolation fraction
+      IF t2 - t1 > 0 THEN
+        fraction = (current_time - t1) / (t2 - t1)
+      ELSE
+        fraction = 0
+      END IF
+      
+      ' Linear interpolation
+      InterpolateDescentRate = v1 + (v2 - v1) * fraction
+      EXIT FUNCTION
+    END IF
+  NEXT i
+  
+  ' If past last keyframe, return last value
+  InterpolateDescentRate = descent_rate_keys(17)
+END FUNCTION
+
+' ========================================
+' Update Descent Display (R1, R2, R3)
+' ========================================
+SUB UpdateDescentDisplay pdi_time, descent_rate, altitude
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  LOCAL data3_y = data2_y + row_spacing
+  
+  ' R1: Time from PDI (seconds, format +0SSS)
+  BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  DrawSign PANEL_X2+15, data1_y+line_offset, 14, 32, "+"
+  DrawDescentFourDigits PANEL_X2+54, data1_y+line_offset, digit_w, digit_h, INT(pdi_time)
+  
+  ' R2: Descent speed (ft/sec, negative, format -0FFF)
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  IF descent_rate >= 0 THEN
+    DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "+"
+  ELSE
+    DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "-"
+    descent_rate = ABS(descent_rate)
+  END IF
+  DrawDescentFourDigits PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, INT(descent_rate)
+  
+  ' R3: Altitude (feet, format +FFFF)
+  BOX PANEL_X2+33, data3_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  DrawSign PANEL_X2+15, data3_y+line_offset, 14, 32, "+"
+  DrawDescentFourDigits PANEL_X2+54, data3_y+line_offset, digit_w, digit_h, INT(altitude)
+END SUB
+
+' ========================================
+' Display Alarm Code (1201 or 1202) in R1 and R2
+' ========================================
+SUB DisplayAlarmCode alarm_code
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  
+  LOCAL d1, d2, d3, d4
+  
+  ' Extract digits from alarm code
+  d1 = (alarm_code \ 1000) MOD 10
+  d2 = (alarm_code \ 100) MOD 10
+  d3 = (alarm_code \ 10) MOD 10
+  d4 = alarm_code MOD 10
+  
+  ' Display in R1
+  BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  DrawSign PANEL_X2+15, data1_y+line_offset, 14, 32, "+"
+  DrawSevenSegDigit PANEL_X2+54, data1_y+line_offset, digit_w, digit_h, STR$(d1), 1
+  DrawSevenSegDigit PANEL_X2+75, data1_y+line_offset, digit_w, digit_h, STR$(d2), 1
+  DrawSevenSegDigit PANEL_X2+96, data1_y+line_offset, digit_w, digit_h, STR$(d3), 1
+  DrawSevenSegDigit PANEL_X2+117, data1_y+line_offset, digit_w, digit_h, STR$(d4), 1
+  
+  ' Display in R2
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "+"
+  DrawSevenSegDigit PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, STR$(d1), 1
+  DrawSevenSegDigit PANEL_X2+75, data2_y+line_offset, digit_w, digit_h, STR$(d2), 1
+  DrawSevenSegDigit PANEL_X2+96, data2_y+line_offset, digit_w, digit_h, STR$(d3), 1
+  DrawSevenSegDigit PANEL_X2+117, data2_y+line_offset, digit_w, digit_h, STR$(d4), 1
+END SUB
+
+' ========================================
+' Clear R1 and R2 (for alarm blinking)
+' ========================================
+SUB ClearRegisters12
+  LOCAL row_h = 62
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  
+  BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+END SUB
+
+' ========================================
+' Draw Four Digits for Descent Display
+' ========================================
+SUB DrawDescentFourDigits x, y, w, h, value
+  LOCAL d1 = (value \ 1000) MOD 10
+  LOCAL d2 = (value \ 100) MOD 10
+  LOCAL d3 = (value \ 10) MOD 10
+  LOCAL d4 = value MOD 10
+  
+  DrawSevenSegDigit x, y, w, h, STR$(d1), 1
+  DrawSevenSegDigit x+21, y, w, h, STR$(d2), 1
+  DrawSevenSegDigit x+42, y, w, h, STR$(d3), 1
+  DrawSevenSegDigit x+63, y, w, h, STR$(d4), 1
 END SUB

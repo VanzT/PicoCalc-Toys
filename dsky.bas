@@ -578,6 +578,9 @@ SUB ProcessKey k$
         digit_count = 0
         verb_digits(0) = 0
         verb_digits(1) = 0
+        ' Turn on KEY REL lamp
+        lamp_state(6) = 1
+        UpdateSingleLamp 6
         UpdateVerbDisplay
         
       ELSE IF k$ = "N" THEN
@@ -586,7 +589,15 @@ SUB ProcessKey k$
         digit_count = 0
         noun_digits(0) = 0
         noun_digits(1) = 0
+        ' Turn on KEY REL lamp
+        lamp_state(6) = 1
+        UpdateSingleLamp 6
         UpdateNounDisplay
+        
+      ELSE IF k$ = "K" THEN
+        ' RESET key - clear any errors
+        lamp_state(8) = 0  ' Turn off OPR ERR
+        UpdateSingleLamp 8
         
       END IF
       
@@ -601,13 +612,19 @@ SUB ProcessKey k$
         ' ENTER key - commit verb
         verb = verb_digits(0) * 10 + verb_digits(1)
         input_mode = MODE_IDLE
+        ' Turn off KEY REL lamp
+        lamp_state(6) = 0
+        UpdateSingleLamp 6
         
-      ELSE IF k$ = "C" THEN
-        ' CLEAR key
+      ELSE IF k$ = "C" OR k$ = "K" THEN
+        ' CLEAR/RESET key - cancel input
         input_mode = MODE_IDLE
         verb_digits(0) = 0
         verb_digits(1) = 0
         digit_count = 0
+        ' Turn off KEY REL lamp
+        lamp_state(6) = 0
+        UpdateSingleLamp 6
         UpdateVerbDisplay
         
       END IF
@@ -623,14 +640,20 @@ SUB ProcessKey k$
         ' ENTER key - commit noun and execute verb/noun combination
         noun = noun_digits(0) * 10 + noun_digits(1)
         input_mode = MODE_IDLE
+        ' Turn off KEY REL lamp
+        lamp_state(6) = 0
+        UpdateSingleLamp 6
         ExecuteVerbNoun
         
-      ELSE IF k$ = "C" THEN
-        ' CLEAR key
+      ELSE IF k$ = "C" OR k$ = "K" THEN
+        ' CLEAR/RESET key - cancel input
         input_mode = MODE_IDLE
         noun_digits(0) = 0
         noun_digits(1) = 0
         digit_count = 0
+        ' Turn off KEY REL lamp
+        lamp_state(6) = 0
+        UpdateSingleLamp 6
         UpdateNounDisplay
         
       END IF
@@ -650,12 +673,23 @@ SUB ProcessKey k$
         ' Auto-execute when 4 digits entered
         IF digit_count = 4 THEN
           SetTimeFromInput
+          ' Turn off KEY REL if input was successful
+          IF input_mode = MODE_IDLE THEN
+            lamp_state(6) = 0
+            UpdateSingleLamp 6
+          END IF
         END IF
         
-      ELSE IF k$ = "C" THEN
-        ' CLEAR key - cancel
+      ELSE IF k$ = "C" OR k$ = "K" THEN
+        ' CLEAR/RESET key - cancel
         input_mode = MODE_IDLE
         digit_count = 0
+        ' Turn off KEY REL lamp
+        lamp_state(6) = 0
+        UpdateSingleLamp 6
+        ' Turn off OPR ERR if it was on
+        lamp_state(8) = 0
+        UpdateSingleLamp 8
         ClearDataRegisters
         
       END IF
@@ -670,12 +704,23 @@ SUB ProcessKey k$
         ' Auto-execute when 6 digits entered
         IF digit_count = 6 THEN
           SetDateFromInput
+          ' Turn off KEY REL if input was successful
+          IF input_mode = MODE_IDLE THEN
+            lamp_state(6) = 0
+            UpdateSingleLamp 6
+          END IF
         END IF
         
-      ELSE IF k$ = "C" THEN
-        ' CLEAR key - cancel
+      ELSE IF k$ = "C" OR k$ = "K" THEN
+        ' CLEAR/RESET key - cancel
         input_mode = MODE_IDLE
         digit_count = 0
+        ' Turn off KEY REL lamp
+        lamp_state(6) = 0
+        UpdateSingleLamp 6
+        ' Turn off OPR ERR if it was on
+        lamp_state(8) = 0
+        UpdateSingleLamp 8
         ClearDataRegisters
         
       END IF
@@ -705,7 +750,9 @@ SUB ExecuteVerbNoun
     FOR i = 0 TO 5
       time_input(i) = 0
     NEXT i
-    ' Flash VERB lamp to indicate input mode
+    ' Turn on KEY REL lamp to indicate input mode
+    lamp_state(6) = 1
+    UpdateSingleLamp 6
     UpdateVerbDisplay
   END IF
   
@@ -717,7 +764,9 @@ SUB ExecuteVerbNoun
     FOR i = 0 TO 5
       date_input(i) = 0
     NEXT i
-    ' Flash VERB lamp to indicate input mode
+    ' Turn on KEY REL lamp to indicate input mode
+    lamp_state(6) = 1
+    UpdateSingleLamp 6
     UpdateVerbDisplay
   END IF
 END SUB
@@ -1006,12 +1055,10 @@ SUB SetTimeFromInput
   
   ' Validate ranges
   IF h > 23 OR m > 59 THEN
-    ' Flash OPR ERR lamp to indicate invalid input
+    ' Turn on OPR ERR lamp to indicate invalid input
     lamp_state(8) = 1
     UpdateSingleLamp 8
-    PAUSE 1000
-    lamp_state(8) = 0
-    UpdateSingleLamp 8
+    ' Stay in input mode so user can press K to reset
     EXIT SUB
   END IF
   
@@ -1019,7 +1066,7 @@ SUB SetTimeFromInput
   time_str$ = RIGHT$("0" + STR$(h), 2) + ":" + RIGHT$("0" + STR$(m), 2) + ":00"
   TIME$ = time_str$
   
-  ' Return to idle mode
+  ' Return to idle mode (successful)
   input_mode = MODE_IDLE
   
   ' Clear the input display
@@ -1039,12 +1086,10 @@ SUB SetDateFromInput
   
   ' Validate ranges (basic check)
   IF d < 1 OR d > 31 OR m < 1 OR m > 12 THEN
-    ' Flash OPR ERR lamp to indicate invalid input
+    ' Turn on OPR ERR lamp to indicate invalid input
     lamp_state(8) = 1
     UpdateSingleLamp 8
-    PAUSE 1000
-    lamp_state(8) = 0
-    UpdateSingleLamp 8
+    ' Stay in input mode so user can press K to reset
     EXIT SUB
   END IF
   
@@ -1052,7 +1097,7 @@ SUB SetDateFromInput
   date_str$ = RIGHT$("0" + STR$(d), 2) + "-" + RIGHT$("0" + STR$(m), 2) + "-" + RIGHT$("0" + STR$(y), 2)
   DATE$ = date_str$
   
-  ' Return to idle mode
+  ' Return to idle mode (successful)
   input_mode = MODE_IDLE
   
   ' Clear the input display

@@ -17,6 +17,7 @@ CONST MODE_INPUT_NOUN = 2
 CONST MODE_DISPLAY_CLOCK = 3
 CONST MODE_SET_TIME = 4
 CONST MODE_LUNAR_DESCENT = 5
+CONST MODE_ALARM = 6         ' New: Alarm mode for 1201/1202
 
 ' V16 N68 - Lunar Descent Data Arrays
 DIM descent_time_keys(17) AS INTEGER    ' Audio time in deciseconds
@@ -33,6 +34,18 @@ DIM digit_count AS INTEGER
 DIM last_key$ AS STRING
 DIM clock_reset AS INTEGER      ' Flag to reset clock display
 
+' Alarm handling variables
+DIM alarm_active AS INTEGER
+DIM restart_timer AS INTEGER
+DIM restart_active AS INTEGER
+DIM alarm_code AS INTEGER    ' Store which alarm (1201 or 1202)
+
+' Activity lamp blink variables
+DIM uplink_blink AS INTEGER
+DIM comp_blink AS INTEGER
+DIM last_uplink_blink AS INTEGER
+DIM last_comp_blink AS INTEGER
+
 ' Clock input buffers
 DIM time_input(5) AS INTEGER    ' HHMMSS input buffer
 
@@ -42,6 +55,11 @@ noun = 0
 digit_count = 0
 last_key$ = ""
 clock_reset = 0
+alarm_active = 0
+restart_active = 0
+alarm_code = 0
+uplink_blink = 0
+comp_blink = 0
 
 ' Lamp state array (0=off, 1=lit)
 DIM lamp_state(13) AS INTEGER
@@ -67,14 +85,17 @@ CLS CLR_BACKGROUND
 COLOUR CLR_WHITE, CLR_BACKGROUND  ' Set text color and background
 FONT 1, 1
 
+' Initialize blink timers
+last_uplink_blink = TIMER
+last_comp_blink = TIMER + 150  ' Offset by 150ms
+
 ' Draw main panels initially
 DrawStatusPanel
 DrawDSKYPanel
 
 ' Set initial state to match reference: VERB 00, NOUN 00, PROG 00
-' Turn on NO ATT lamp (lamp 2) at startup
-lamp_state(2) = 1
-UpdateSingleLamp 2
+' NO ATT lamp should be OFF for simulation
+lamp_state(2) = 0
 
 ' Main loop - handle input
 DO
@@ -82,6 +103,19 @@ DO
   k$ = INKEY$
   IF k$ <> "" THEN
     ProcessKey k$
+  END IF
+  
+  ' Handle RESTART lamp timer (turn off after 2 seconds)
+  IF restart_active = 1 AND TIMER - restart_timer >= 2000 THEN
+    restart_active = 0
+    lamp_state(7) = 0  ' Turn off RESTART lamp
+    lamp_state(5) = 0  ' Turn off PROG lamp
+    UpdateSingleLamp 7
+    UpdateSingleLamp 5
+    ' Resume displaying digits on row 5
+    IF input_mode <> MODE_DISPLAY_CLOCK AND input_mode <> MODE_LUNAR_DESCENT THEN
+      UpdateRow5Display
+    END IF
   END IF
   
   ' Update clock display if in display mode
@@ -119,11 +153,8 @@ SUB DrawStatusPanel
   END IF
   
   ' Row 2
-  IF lamp_state(2) = 1 THEN
-    DrawIndicator PANEL_X1+5, PANEL_Y+48, 65, 32, "NO ATT", CLR_WHITE
-  ELSE
-    DrawIndicator PANEL_X1+5, PANEL_Y+48, 65, 32, "NO ATT", CLR_OFF
-  END IF
+  ' NO ATT lamp is always OFF for the simulation
+  DrawIndicator PANEL_X1+5, PANEL_Y+48, 65, 32, "NO ATT", CLR_OFF
   
   IF lamp_state(3) = 1 THEN
     DrawIndicator PANEL_X1+78, PANEL_Y+48, 65, 32, "GIMBAL~LOCK", CLR_YELLOW
@@ -151,8 +182,9 @@ SUB DrawStatusPanel
     DrawIndicator PANEL_X1+5, PANEL_Y+124, 65, 32, "KEY REL", CLR_OFF
   END IF
   
+  ' RESTART lamp - now YELLOW
   IF lamp_state(7) = 1 THEN
-    DrawIndicator PANEL_X1+78, PANEL_Y+124, 65, 32, "RESTART", CLR_WHITE
+    DrawIndicator PANEL_X1+78, PANEL_Y+124, 65, 32, "RESTART", CLR_YELLOW
   ELSE
     DrawIndicator PANEL_X1+78, PANEL_Y+124, 65, 32, "RESTART", CLR_OFF
   END IF
@@ -276,7 +308,7 @@ SUB UpdateSingleLamp lamp_num
       x = PANEL_X1+78: y = PANEL_Y+124: w = 65: h = 32
       label$ = "RESTART"
       IF lamp_state(7) = 1 THEN
-        clr = CLR_WHITE
+        clr = CLR_YELLOW
       ELSE
         clr = CLR_OFF
       END IF
@@ -454,6 +486,9 @@ END SUB
 SUB DrawSign x, y, w, h, sign$
   LOCAL lw = 3  ' line width
   
+  ' Clear the sign area first
+  BOX x, y, w, h, 0, , CLR_PANEL
+  
   IF sign$ = "+" THEN
     ' Vertical line
     LINE x+w/2-lw/2, y+4, x+w/2-lw/2, y+h-4, lw, CLR_GREEN
@@ -604,6 +639,49 @@ SUB ProcessKey k$
         ' RESET key - clear any errors
         lamp_state(8) = 0  ' Turn off OPR ERR
         UpdateSingleLamp 8
+        
+      ELSE IF k$ = "P" THEN
+        ' PRO key - used to acknowledge alarms
+        IF alarm_active = 1 THEN
+          ' Clear alarm and activate RESTART lamp
+          alarm_active = 0
+          lamp_state(5) = 0  ' Turn off PROG lamp
+          lamp_state(7) = 1  ' Turn on RESTART lamp
+          restart_active = 1
+          restart_timer = TIMER
+          UpdateSingleLamp 5
+          UpdateSingleLamp 7
+          ' Resume displaying digits if not in special mode
+          IF input_mode <> MODE_DISPLAY_CLOCK AND input_mode <> MODE_LUNAR_DESCENT THEN
+            UpdateRow5Display
+          END IF
+        END IF
+        
+      ELSE IF k$ = "1" THEN
+        ' Simulate 1201 alarm (for testing)
+        IF alarm_active = 0 THEN
+          alarm_active = 1
+          alarm_code = 1201
+          lamp_state(5) = 1  ' Turn on PROG lamp
+          UpdateSingleLamp 5
+          ' Dim row 5 digits if not in special display mode
+          IF input_mode <> MODE_DISPLAY_CLOCK AND input_mode <> MODE_LUNAR_DESCENT THEN
+            DimRow5Display
+          END IF
+        END IF
+        
+      ELSE IF k$ = "2" THEN
+        ' Simulate 1202 alarm (for testing)
+        IF alarm_active = 0 THEN
+          alarm_active = 1
+          alarm_code = 1202
+          lamp_state(5) = 1  ' Turn on PROG lamp
+          UpdateSingleLamp 5
+          ' Dim row 5 digits if not in special display mode
+          IF input_mode <> MODE_DISPLAY_CLOCK AND input_mode <> MODE_LUNAR_DESCENT THEN
+            DimRow5Display
+          END IF
+        END IF
         
       END IF
       
@@ -960,10 +1038,20 @@ SUB UpdateClockDisplay
   LOCAL data1_y = row3_y + 18
   LOCAL data2_y = data1_y + row_spacing
   LOCAL data3_y = data2_y + row_spacing
+  LOCAL uplink_interval
   STATIC last_sec AS INTEGER = -1
   STATIC last_min AS INTEGER = -1
   STATIC last_hr AS INTEGER = -1
   STATIC comp_off_time AS INTEGER
+  
+  ' Handle UPLINK ACTY blinking (very fast and random 40-80ms)
+  uplink_interval = 40 + INT(RND * 40)
+  IF TIMER - last_uplink_blink >= uplink_interval THEN
+    uplink_blink = 1 - uplink_blink
+    lamp_state(0) = uplink_blink
+    last_uplink_blink = TIMER
+    UpdateSingleLamp 0
+  END IF
   
   ' Get current time
   t$ = TIME$
@@ -1212,14 +1300,22 @@ SUB RunLunarDescent
   PLAY FLAC "a11_descent.flac"
   
   LOCAL audio_start = TIMER
-  LOCAL last_comp_blink = TIMER
+  LOCAL last_comp_blink = TIMER + 150  ' Offset by 150ms
+  LOCAL last_uplink_blink = TIMER
   LOCAL comp_state = 0
+  LOCAL uplink_state = 0
   
   ' Alarm tracking
   LOCAL in_alarm = 0
   LOCAL alarm_blink_state = 0
   LOCAL alarm_blink_timer = TIMER
   LOCAL alarm_type = 0  ' 1=1201, 2=1202
+  LOCAL alarm_1201_acked = 0  ' Track if 1201 was acknowledged
+  LOCAL alarm_1202_acked = 0  ' Track if 1202 was acknowledged
+  LOCAL alarm_start_time = 0  ' When alarm started
+  LOCAL restart_active = 0    ' RESTART lamp showing
+  LOCAL restart_start_time = 0
+  LOCAL should_acknowledge = 0 ' Flag for alarm acknowledgment
   
   ' Loop variables
   LOCAL elapsed_ds
@@ -1227,67 +1323,141 @@ SUB RunLunarDescent
   LOCAL altitude
   LOCAL desc_rate
   LOCAL pdi_seconds
+  LOCAL uplink_interval
+  LOCAL comp_interval
   
   ' Main simulation loop
   DO WHILE MM.INFO$(SOUND) <> "OFF"
     ' Calculate elapsed time in deciseconds
     elapsed_ds = (TIMER - audio_start) / 100
     
-    ' Check for keyboard interrupt (V, N, K, or C keys)
+    ' Check for keyboard input
     k$ = INKEY$
+    
+    ' Check for keyboard interrupt (V, N, K, or C keys)
     IF k$ = "V" OR k$ = "v" OR k$ = "N" OR k$ = "n" OR k$ = "K" OR k$ = "k" OR k$ = "C" OR k$ = "c" THEN
       PLAY STOP
       input_mode = MODE_IDLE
-      ' Turn off RESTART lamp
+      ' Turn off RESTART and PROG lamps
       lamp_state(7) = 0
+      lamp_state(5) = 0
       UpdateSingleLamp 7
+      UpdateSingleLamp 5
       ProcessKey UCASE$(k$)
       EXIT SUB
     END IF
     
-    ' Check for alarm periods
+    ' Check for alarm periods (only if not already acknowledged)
     in_alarm = 0
     alarm_type = 0
     
-    ' 1201 alarm from 0:09 to 0:15 (90-150 deciseconds)
-    IF elapsed_ds >= 90 AND elapsed_ds < 150 THEN
+    ' 1201 alarm from 0:09 to 0:16 (90-160 deciseconds)
+    IF elapsed_ds >= 90 AND elapsed_ds < 160 AND alarm_1201_acked = 0 THEN
       in_alarm = 1
       alarm_type = 1
     END IF
     
+    ' Check if 1201 needs acknowledgment at exactly 0:16
+    IF elapsed_ds >= 160 AND elapsed_ds < 180 AND alarm_1201_acked = 0 AND restart_active = 0 THEN
+      ' Trigger RESTART sequence
+      alarm_1201_acked = 1
+      lamp_state(5) = 0  ' Turn off PROG
+      UpdateSingleLamp 5
+      lamp_state(7) = 1  ' Turn on RESTART
+      UpdateSingleLamp 7
+      restart_active = 1
+      restart_start_time = TIMER
+    END IF
+    
     ' 1202 alarm from 0:48 to 0:51 (480-510 deciseconds)
-    IF elapsed_ds >= 480 AND elapsed_ds < 510 THEN
+    IF elapsed_ds >= 480 AND elapsed_ds < 510 AND alarm_1202_acked = 0 THEN
       in_alarm = 1
       alarm_type = 2
+      ' Mark when alarm started (only first time we see it)
+      IF alarm_start_time = 0 THEN
+        alarm_start_time = TIMER
+      END IF
     END IF
     
     ' Handle alarm display
     IF in_alarm = 1 THEN
-      ' Blink alarm code in R1 and R2, and blink RESTART lamp
-      IF TIMER - alarm_blink_timer >= 500 THEN
-        alarm_blink_state = 1 - alarm_blink_state
-        alarm_blink_timer = TIMER
-        
-        IF alarm_blink_state = 1 THEN
-          ' Show alarm code
-          IF alarm_type = 1 THEN
-            DisplayAlarmCode 1201
-          ELSE
-            DisplayAlarmCode 1202
-          END IF
-          ' Turn on RESTART lamp (yellow)
-          lamp_state(7) = 1
-          UpdateSingleLamp 7
-        ELSE
-          ' Blank R1 and R2
-          ClearRegisters12
-          ' Turn off RESTART lamp
-          lamp_state(7) = 0
-          UpdateSingleLamp 7
-        END IF
+      ' Check if it's time to acknowledge based on audio time
+      should_acknowledge = 0
+      
+      ' 1202 alarm acknowledged ~2 seconds after it appears
+      IF alarm_type = 2 AND alarm_start_time > 0 AND (TIMER - alarm_start_time) >= 2000 AND restart_active = 0 THEN
+        should_acknowledge = 1
       END IF
+      
+      IF should_acknowledge = 1 THEN
+        ' Mark alarm as acknowledged
+        alarm_1202_acked = 1
+        
+        ' Turn off PROG lamp
+        lamp_state(5) = 0
+        UpdateSingleLamp 5
+        
+        ' Turn on RESTART lamp
+        lamp_state(7) = 1
+        UpdateSingleLamp 7
+        restart_active = 1
+        restart_start_time = TIMER
+        
+        ' Clear alarm state
+        in_alarm = 0
+        alarm_start_time = 0
+      ELSE
+        ' Still in alarm - show PROG lamp and blink alarm code
+        lamp_state(5) = 1
+        UpdateSingleLamp 5
+        
+        ' Blink alarm code in R1 and R2
+        IF TIMER - alarm_blink_timer >= 500 THEN
+          alarm_blink_state = 1 - alarm_blink_state
+          alarm_blink_timer = TIMER
+          
+          IF alarm_blink_state = 1 THEN
+            ' Show alarm code in R1 and R2
+            IF alarm_type = 1 THEN
+              DisplayAlarmCode 1201
+            ELSE
+              DisplayAlarmCode 1202
+            END IF
+          ELSE
+            ' Blank R1 and R2
+            ClearRegisters12
+          END IF
+        END IF
+        
+        ' Blank R3 (row 5) during alarm
+        BlankRow5
+      END IF
+      
+    ELSE IF restart_active = 1 THEN
+      ' RESTART lamp is showing - ensure PROG is off
+      lamp_state(5) = 0
+      UpdateSingleLamp 5
+      
+      ' Check if 2 seconds have passed
+      IF (TIMER - restart_start_time) >= 2000 THEN
+        ' Turn off RESTART lamp
+        lamp_state(7) = 0
+        UpdateSingleLamp 7
+        restart_active = 0
+        
+        ' Resume normal display
+        altitude = InterpolateAltitude(elapsed_ds)
+        desc_rate = InterpolateDescentRate(elapsed_ds)
+        pdi_seconds = elapsed_ds / 10
+        UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+      END IF
+      
     ELSE
-      ' Normal display - interpolate and show values
+      ' Normal display - ensure PROG is off
+      lamp_state(5) = 0
+      UpdateSingleLamp 5
+      
+      ' Interpolate and show values
       altitude = InterpolateAltitude(elapsed_ds)
       desc_rate = InterpolateDescentRate(elapsed_ds)
       
@@ -1298,8 +1468,19 @@ SUB RunLunarDescent
       UpdateDescentDisplay pdi_seconds, desc_rate, altitude
     END IF
     
-    ' COMP ACTY blinking (every 2 seconds)
-    IF TIMER - last_comp_blink >= 2000 THEN
+    ' Activity lamp blinking (fast and random)
+    ' UPLINK ACTY - random between 40-80ms (very fast!)
+    uplink_interval = 40 + INT(RND * 40)
+    IF TIMER - last_uplink_blink >= uplink_interval THEN
+      uplink_state = 1 - uplink_state
+      lamp_state(0) = uplink_state
+      last_uplink_blink = TIMER
+      UpdateSingleLamp 0
+    END IF
+    
+    ' COMP ACTY - random between 100-180ms
+    comp_interval = 100 + INT(RND * 80)
+    IF TIMER - last_comp_blink >= comp_interval THEN
       comp_state = 1 - comp_state
       IF comp_state = 1 THEN
         DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, 58, "COMP~ACTY", CLR_GREEN
@@ -1400,15 +1581,12 @@ SUB UpdateDescentDisplay pdi_time, descent_rate, altitude
   DrawSign PANEL_X2+15, data1_y+line_offset, 14, 32, "+"
   DrawDescentFourDigits PANEL_X2+54, data1_y+line_offset, digit_w, digit_h, INT(pdi_time)
   
-  ' R2: Descent speed (ft/sec, negative, format -0FFF)
+  ' R2: Descent speed (ft/sec, always negative during descent, format -0FFF)
   BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
-  IF descent_rate >= 0 THEN
-    DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "+"
-  ELSE
-    DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "-"
-    descent_rate = ABS(descent_rate)
-  END IF
-  DrawDescentFourDigits PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, INT(descent_rate)
+  ' Always show minus sign for descent
+  DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "-"
+  ' Take absolute value for display
+  DrawDescentFourDigits PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, INT(ABS(descent_rate))
   
   ' R3: Altitude (feet, format +FFFF)
   BOX PANEL_X2+33, data3_y+line_offset, 102, digit_h, 0, , CLR_PANEL
@@ -1471,6 +1649,23 @@ SUB ClearRegisters12
 END SUB
 
 ' ========================================
+' Blank Row 5 (R3) during alarm
+' ========================================
+SUB BlankRow5
+  LOCAL row_h = 62
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  LOCAL data3_y = data2_y + row_spacing
+  
+  ' Clear the entire R3 area (sign + digits)
+  BOX PANEL_X2+15, data3_y+line_offset, 120, digit_h, 0, , CLR_PANEL
+END SUB
+
+' ========================================
 ' Draw Four Digits for Descent Display
 ' ========================================
 SUB DrawDescentFourDigits x, y, w, h, value
@@ -1483,4 +1678,72 @@ SUB DrawDescentFourDigits x, y, w, h, value
   DrawSevenSegDigit x+21, y, w, h, STR$(d2), 1
   DrawSevenSegDigit x+42, y, w, h, STR$(d3), 1
   DrawSevenSegDigit x+63, y, w, h, STR$(d4), 1
+END SUB
+' ========================================
+' Update COMP ACTY indicator with blink state
+' ========================================
+SUB UpdateCompActy
+  LOCAL row_h = 62
+  
+  IF comp_blink = 1 THEN
+    DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_WHITE
+  ELSE
+    DrawIndicator PANEL_X2+8, PANEL_Y+8, 60, row_h-4, "COMP~ACTY", CLR_OFF
+  END IF
+END SUB
+
+' ========================================
+' Dim Row 5 Display (for alarm state)
+' ========================================
+SUB DimRow5Display
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  
+  ' Calculate position for row 5 (data row 3)
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  LOCAL data3_y = data2_y + row_spacing
+  
+  ' Clear the area
+  BOX PANEL_X2+15, data3_y+line_offset, 120, digit_h, 0, , CLR_PANEL
+  
+  ' Draw blank sign and unlit digits
+  DrawSign PANEL_X2+15, data3_y+line_offset, 14, 32, ""
+  DrawSevenSegDigit PANEL_X2+33, data3_y+line_offset, digit_w, digit_h, "8", 0
+  DrawSevenSegDigit PANEL_X2+54, data3_y+line_offset, digit_w, digit_h, "8", 0
+  DrawSevenSegDigit PANEL_X2+75, data3_y+line_offset, digit_w, digit_h, "8", 0
+  DrawSevenSegDigit PANEL_X2+96, data3_y+line_offset, digit_w, digit_h, "8", 0
+  DrawSevenSegDigit PANEL_X2+117, data3_y+line_offset, digit_w, digit_h, "8", 0
+END SUB
+
+' ========================================
+' Update Row 5 Display (restore after alarm)
+' ========================================
+SUB UpdateRow5Display
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  
+  ' Calculate position for row 5 (data row 3)
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  LOCAL data3_y = data2_y + row_spacing
+  
+  ' Clear the area
+  BOX PANEL_X2+15, data3_y+line_offset, 120, digit_h, 0, , CLR_PANEL
+  
+  ' For now, just clear it - specific modes will update as needed
+  DrawSign PANEL_X2+15, data3_y+line_offset, 14, 32, ""
+  DrawSevenSegDigit PANEL_X2+33, data3_y+line_offset, digit_w, digit_h, " ", 0
+  DrawSevenSegDigit PANEL_X2+54, data3_y+line_offset, digit_w, digit_h, " ", 0
+  DrawSevenSegDigit PANEL_X2+75, data3_y+line_offset, digit_w, digit_h, " ", 0
+  DrawSevenSegDigit PANEL_X2+96, data3_y+line_offset, digit_w, digit_h, " ", 0
+  DrawSevenSegDigit PANEL_X2+117, data3_y+line_offset, digit_w, digit_h, " ", 0
 END SUB

@@ -1044,8 +1044,21 @@ SUB UpdateClockDisplay
   STATIC last_hr AS INTEGER = -1
   STATIC comp_off_time AS INTEGER
   
-  ' Handle UPLINK ACTY blinking (very fast and random 40-80ms)
-  uplink_interval = 40 + INT(RND * 40)
+  ' Handle UPLINK ACTY blinking (spastic chatter with brief pauses)
+  IF uplink_blink = 1 THEN
+    ' Currently on - short off time
+    uplink_interval = 30 + INT(RND * 30)
+  ELSE
+    ' Currently off - mostly quick on, occasionally longer pause
+    IF RND < 0.15 THEN
+      ' 15% chance of a pause
+      uplink_interval = 200 + INT(RND * 200)
+    ELSE
+      ' 85% chance of quick chatter
+      uplink_interval = 30 + INT(RND * 40)
+    END IF
+  END IF
+  
   IF TIMER - last_uplink_blink >= uplink_interval THEN
     uplink_blink = 1 - uplink_blink
     lamp_state(0) = uplink_blink
@@ -1468,9 +1481,23 @@ SUB RunLunarDescent
       UpdateDescentDisplay pdi_seconds, desc_rate, altitude
     END IF
     
-    ' Activity lamp blinking (fast and random)
-    ' UPLINK ACTY - random between 40-80ms (very fast!)
-    uplink_interval = 40 + INT(RND * 40)
+    ' Activity lamp blinking with realistic patterns
+    ' UPLINK ACTY - spastic chatter with brief pauses
+    ' Quick bursts: 30-60ms, occasional pause: 200-400ms
+    IF uplink_state = 1 THEN
+      ' Currently on - short off time (chatter continues)
+      uplink_interval = 30 + INT(RND * 30)
+    ELSE
+      ' Currently off - mostly quick on, occasionally longer pause
+      IF RND < 0.15 THEN
+        ' 15% chance of a pause
+        uplink_interval = 200 + INT(RND * 200)
+      ELSE
+        ' 85% chance of quick chatter
+        uplink_interval = 30 + INT(RND * 40)
+      END IF
+    END IF
+    
     IF TIMER - last_uplink_blink >= uplink_interval THEN
       uplink_state = 1 - uplink_state
       lamp_state(0) = uplink_state
@@ -1478,8 +1505,16 @@ SUB RunLunarDescent
       UpdateSingleLamp 0
     END IF
     
-    ' COMP ACTY - random between 100-180ms
-    comp_interval = 100 + INT(RND * 80)
+    ' COMP ACTY - thinks hard (stays on), then brief break
+    ' On time: 800-1500ms (thinking), Off time: 100-300ms (brief break)
+    IF comp_state = 1 THEN
+      ' Currently on - long thinking time
+      comp_interval = 800 + INT(RND * 700)
+    ELSE
+      ' Currently off - short break
+      comp_interval = 100 + INT(RND * 200)
+    END IF
+    
     IF TIMER - last_comp_blink >= comp_interval THEN
       comp_state = 1 - comp_state
       IF comp_state = 1 THEN

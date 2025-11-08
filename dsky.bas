@@ -1351,14 +1351,14 @@ SUB RunLunarDescent
     in_alarm = 0
     alarm_type = 0
     
-    ' 1201 alarm from 0:09 to 0:16 (90-160 deciseconds)
-    IF elapsed_ds >= 90 AND elapsed_ds < 160 AND alarm_1201_acked = 0 THEN
+    ' 1201 alarm from 0:08 to 0:15 (80-150 deciseconds)
+    IF elapsed_ds >= 80 AND elapsed_ds < 150 AND alarm_1201_acked = 0 THEN
       in_alarm = 1
       alarm_type = 1
     END IF
     
-    ' Check if 1201 needs acknowledgment at exactly 0:16
-    IF elapsed_ds >= 160 AND elapsed_ds < 180 AND alarm_1201_acked = 0 AND restart_active = 0 THEN
+    ' Check if 1201 needs acknowledgment at exactly 0:15
+    IF elapsed_ds >= 150 AND elapsed_ds < 170 AND alarm_1201_acked = 0 AND restart_active = 0 THEN
       ' Trigger RESTART sequence
       alarm_1201_acked = 1
       lamp_state(5) = 0  ' Turn off PROG
@@ -1369,8 +1369,8 @@ SUB RunLunarDescent
       restart_start_time = TIMER
     END IF
     
-    ' 1202 alarm from 0:48 to 0:51 (480-510 deciseconds)
-    IF elapsed_ds >= 480 AND elapsed_ds < 510 AND alarm_1202_acked = 0 THEN
+    ' 1202 alarm from 0:47 to 0:50 (470-500 deciseconds)
+    IF elapsed_ds >= 470 AND elapsed_ds < 500 AND alarm_1202_acked = 0 THEN
       in_alarm = 1
       alarm_type = 2
       ' Mark when alarm started (only first time we see it)
@@ -1448,7 +1448,7 @@ SUB RunLunarDescent
         ' Resume normal display
         altitude = InterpolateAltitude(elapsed_ds)
         desc_rate = InterpolateDescentRate(elapsed_ds)
-        pdi_seconds = elapsed_ds / 10
+        pdi_seconds = (elapsed_ds / 10) + 533  ' Add 533 seconds from actual PDI
         UpdateDescentDisplay pdi_seconds, desc_rate, altitude
       END IF
       
@@ -1461,8 +1461,8 @@ SUB RunLunarDescent
       altitude = InterpolateAltitude(elapsed_ds)
       desc_rate = InterpolateDescentRate(elapsed_ds)
       
-      ' PDI time in seconds (R1 just tracks elapsed audio time as seconds)
-      pdi_seconds = elapsed_ds / 10
+      ' PDI time in seconds (starts at 533 seconds from actual PDI)
+      pdi_seconds = (elapsed_ds / 10) + 533
       
       ' Update displays
       UpdateDescentDisplay pdi_seconds, desc_rate, altitude

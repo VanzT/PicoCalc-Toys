@@ -1,7 +1,8 @@
 ' Othello Wi-Fi Multiplayer (PicoCalc)
 ' Author: Vance Thompson
-' Version: 1.4
+' Version: 1.5
 ' Date: 2025-09-13
+' Modified: Added resend functionality with 'R' key
 
 OPTION BASE 1
 OPTION EXPLICIT
@@ -33,6 +34,11 @@ DIM assigned% : assigned% = 0
 DIM myTicket%
 DIM lastHello! : lastHello! = -1
 
+' === Resend tracking variables ===
+DIM lastMessage$ = ""      ' Store the last message sent
+DIM lastMoveCol% = 0       ' Store last move column
+DIM lastMoveRow% = 0       ' Store last move row
+
 CONST LEDCOUNT = 8
 DIM INTEGER ledBuf%(LEDCOUNT)
 
@@ -58,6 +64,19 @@ END SUB
 
 SUB SendHello
   WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
+END SUB
+
+' === SUB: Resend last message ===
+SUB ResendLastMessage
+  IF peer$ <> "" AND lastMessage$ <> "" THEN
+    WEB UDP SEND peer$, PORT%, lastMessage$
+    ' Visual feedback
+    COLOR RGB(255,255,0), BOARD_COLOR%
+    PRINT @(20, 300) "Message resent to peer";
+    PAUSE 500
+    ' Clear message by redrawing board area
+    BOX 20, 300, 300, 20, 1, BOARD_COLOR%, BOARD_COLOR%
+  END IF
 END SUB
 
 ' === SUB: Count pieces on board ===
@@ -176,7 +195,8 @@ SUB check_game_over
     PRINT @(20, 140) "Game Over"
     PRINT @(20, 170) "Press any key to return to menu..."
     IF peer$ <> "" THEN
-      WEB UDP SEND peer$, PORT%, "GAMEOVER " + STR$(b%) + "," + STR$(w%)
+      lastMessage$ = "GAMEOVER " + STR$(b%) + "," + STR$(w%)
+      WEB UDP SEND peer$, PORT%, lastMessage$
     ENDIF
     DO WHILE INKEY$ = "": PAUSE 50: LOOP
     LED_AllOff
@@ -294,7 +314,7 @@ END SUB
 
     ' ---- Normal gameplay after assignment ----
     IF LEFT$(t$,4) = "MOVE" THEN
-      ' Parse robustly (handles 1–2 digit numbers if ever needed)
+      ' Parse robustly (handles 1-2 digit numbers if ever needed)
       comma% = INSTR(t$, ",")
       x% = VAL(MID$(t$, 6, comma% - 6))
       y% = VAL(MID$(t$, comma% + 1))
@@ -397,6 +417,13 @@ LED_UpdateTurnLights
 DO
   k$ = INKEY$
   IF k$ = "" THEN PAUSE 20: CONTINUE DO
+  
+  ' Check for 'R' key (capital R only) for resend
+  IF k$ = "R" THEN
+    ResendLastMessage
+    CONTINUE DO
+  END IF
+  
   draw_selector sel_col%, sel_row%, ERASE_COLOR%
   SELECT CASE ASC(k$)
     CASE 128: IF sel_row% > 1 THEN sel_row% = sel_row% - 1
@@ -411,9 +438,12 @@ DO
         flip_pieces sel_col%, sel_row%, turn%
         draw_score_display
 
-        ' >>> Send MOVE first so the peer can apply the final state
+        ' >>> Store and send MOVE so the peer can apply the final state
         IF peer$ <> "" THEN
-          WEB UDP SEND peer$, PORT%, "MOVE " + STR$(sel_col%) + "," + STR$(sel_row%)
+          lastMessage$ = "MOVE " + STR$(sel_col%) + "," + STR$(sel_row%)
+          lastMoveCol% = sel_col%
+          lastMoveRow% = sel_row%
+          WEB UDP SEND peer$, PORT%, lastMessage$
         END IF
 
         ' Now proceed locally
@@ -421,7 +451,7 @@ DO
         LED_UpdateTurnLights
         check_game_over
       END IF
-    CASE 112  ' F1 key – try to pass
+    CASE 112  ' F1 key - try to pass
       legalMove% = 0
       FOR x% = 1 TO BOARD_SIZE%
         FOR y% = 1 TO BOARD_SIZE%
@@ -436,7 +466,8 @@ DO
         turn% = 3 - turn%
         LED_UpdateTurnLights
         IF peer$ <> "" THEN
-          WEB UDP SEND peer$, PORT%, "PASS"
+          lastMessage$ = "PASS"
+          WEB UDP SEND peer$, PORT%, lastMessage$
         END IF
       ELSE
         COLOR RGB(255,255,0), BOARD_COLOR%

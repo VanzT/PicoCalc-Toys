@@ -1224,78 +1224,100 @@ END SUB
 ' V16 N68 - Initialize Lunar Descent Data
 ' ========================================
 SUB InitLunarDescentData
-  ' Keyframe data based on actual audio callouts
-  ' Time in deciseconds (tenths of second)
+  ' Accurate Apollo 11 descent data
+  ' Time is Mission Elapsed Time (MET) in seconds shown in R1
+  ' All times relative to audio start at MET 534
   
-  descent_time_keys(0) = 0      ' 00:00 - Start
-  descent_alt_keys(0) = 3500
-  descent_rate_keys(0) = -100
+  ' Audio time 0:00 - MET 534
+  descent_time_keys(0) = 0
+  descent_alt_keys(0) = 3368
+  descent_rate_keys(0) = -737
   
-  descent_time_keys(1) = 10     ' 00:01 - "Go for landing"
-  descent_alt_keys(1) = 3500
-  descent_rate_keys(1) = -100
+  ' Audio time 0:06 - MET 540 (1201 alarm begins)
+  descent_time_keys(1) = 60
+  descent_alt_keys(1) = 3016
+  descent_rate_keys(1) = -702
   
-  descent_time_keys(2) = 70     ' 00:07 - "3000 feet"
-  descent_alt_keys(2) = 3000
-  descent_rate_keys(2) = -100
+  ' Audio time 0:19 - MET 553 (1201 cleared, RESTART)
+  descent_time_keys(2) = 190
+  descent_alt_keys(2) = 2292
+  descent_rate_keys(2) = -559
   
-  descent_time_keys(3) = 90     ' 00:09 - 1201 alarm starts
-  descent_alt_keys(3) = 2900
-  descent_rate_keys(3) = -100
+  ' Audio time 0:31 - MET 565
+  descent_time_keys(3) = 310
+  descent_alt_keys(3) = 1727
+  descent_rate_keys(3) = -439
   
-  descent_time_keys(4) = 210    ' 00:21 - "2000 feet"
-  descent_alt_keys(4) = 2000
-  descent_rate_keys(4) = -100
+  ' Audio time 0:46 - MET 580 (1202 alarm begins)
+  descent_time_keys(4) = 460
+  descent_alt_keys(4) = 1215
+  descent_rate_keys(4) = -324
   
-  descent_time_keys(5) = 480    ' 00:48 - 1202 alarm
-  descent_alt_keys(5) = 1200
-  descent_rate_keys(5) = -80
+  ' Audio time 1:00 - MET 594 (1202 cleared, RESTART)
+  descent_time_keys(5) = 600
+  descent_alt_keys(5) = 776
+  descent_rate_keys(5) = -286
   
-  descent_time_keys(6) = 570    ' 00:57 - "700 feet, 21 down"
-  descent_alt_keys(6) = 700
-  descent_rate_keys(6) = -70
+  ' Audio time 1:13 - MET 607
+  descent_time_keys(6) = 730
+  descent_alt_keys(6) = 535
+  descent_rate_keys(6) = -148
   
-  descent_time_keys(7) = 650    ' 01:05 - "540 feet"
-  descent_alt_keys(7) = 540
-  descent_rate_keys(7) = -60
+  ' Audio time 1:19 - MET 613
+  descent_time_keys(7) = 790
+  descent_alt_keys(7) = 452
+  descent_rate_keys(7) = -112
   
-  descent_time_keys(8) = 970    ' 01:37 - "300 feet"
-  descent_alt_keys(8) = 300
-  descent_rate_keys(8) = -40
+  ' Audio time 1:27 - MET 621
+  descent_time_keys(8) = 870
+  descent_alt_keys(8) = 365
+  descent_rate_keys(8) = -55
   
-  descent_time_keys(9) = 1070   ' 01:47 - "70"
-  descent_alt_keys(9) = 200
-  descent_rate_keys(9) = -30
+  ' Audio time 1:42 - MET 636
+  descent_time_keys(9) = 1020
+  descent_alt_keys(9) = 301
+  descent_rate_keys(9) = -35
   
-  descent_time_keys(10) = 1340  ' 02:14 - "200 feet"
-  descent_alt_keys(10) = 200
-  descent_rate_keys(10) = -20
+  ' Audio time 1:58 - MET 652
+  descent_time_keys(10) = 1180
+  descent_alt_keys(10) = 261
+  descent_rate_keys(10) = -19
   
-  descent_time_keys(11) = 1550  ' 02:35 - "100 feet"
-  descent_alt_keys(11) = 100
-  descent_rate_keys(11) = -10
+  ' Audio time 2:04 - MET 658
+  descent_time_keys(11) = 1240
+  descent_alt_keys(11) = 250
+  descent_rate_keys(11) = -25
   
-  descent_time_keys(12) = 1640  ' 02:44 - "74 feet"
-  descent_alt_keys(12) = 74
-  descent_rate_keys(12) = -8
+  ' Audio time 2:07 - MET 661 (ALT and VEL lamps turn on)
+  descent_time_keys(12) = 1270
+  descent_alt_keys(12) = 239
+  descent_rate_keys(12) = -28
   
-  descent_time_keys(13) = 1900  ' 03:10 - "30 feet"
-  descent_alt_keys(13) = 30
-  descent_rate_keys(13) = -3
+  ' Audio time 2:17 - MET 671
+  descent_time_keys(13) = 1370
+  descent_alt_keys(13) = 212
+  descent_rate_keys(13) = -38
   
-  descent_time_keys(14) = 2090  ' 03:29 - "Contact light"
-  descent_alt_keys(14) = 5
-  descent_rate_keys(14) = -1
+  ' Audio time 2:27 - MET 681
+  descent_time_keys(14) = 1470
+  descent_alt_keys(14) = 164
+  descent_rate_keys(14) = -63
   
-  descent_time_keys(15) = 2150  ' 03:35 - Touchdown
-  descent_alt_keys(15) = 0
-  descent_rate_keys(15) = 0
+  ' Audio time 2:37 - MET 691
+  descent_time_keys(15) = 1570
+  descent_alt_keys(15) = 117
+  descent_rate_keys(15) = -44
   
-  descent_time_keys(16) = 2300  ' 03:50 - Hold
-  descent_alt_keys(16) = 0
-  descent_rate_keys(16) = 0
+  ' Audio time 2:47 - MET 701
+  descent_time_keys(16) = 1670
+  descent_alt_keys(16) = 86
+  descent_rate_keys(16) = -28
   
-  descent_time_keys(17) = 2440  ' 04:04 - End
+  ' Audio time 2:57 - MET 711
+  descent_time_keys(17) = 1770
+  descent_alt_keys(17) = 65
+  descent_rate_keys(17) = -25
+END SUB
   descent_alt_keys(17) = 0
   descent_rate_keys(17) = 0
 END SUB
@@ -1338,6 +1360,10 @@ SUB RunLunarDescent
   LOCAL pdi_seconds
   LOCAL uplink_interval
   LOCAL comp_interval
+  LOCAL alt_vel_on
+  
+  ' Initialize
+  alt_vel_on = 0
   
   ' Main simulation loop
   DO WHILE MM.INFO$(SOUND) <> "OFF"
@@ -1364,14 +1390,14 @@ SUB RunLunarDescent
     in_alarm = 0
     alarm_type = 0
     
-    ' 1201 alarm from 0:08 to 0:15 (80-150 deciseconds)
-    IF elapsed_ds >= 80 AND elapsed_ds < 150 AND alarm_1201_acked = 0 THEN
+    ' 1201 alarm from 0:06 to 0:19 (60-190 deciseconds) - MET 540-553
+    IF elapsed_ds >= 60 AND elapsed_ds < 190 AND alarm_1201_acked = 0 THEN
       in_alarm = 1
       alarm_type = 1
     END IF
     
-    ' Check if 1201 needs acknowledgment at exactly 0:15
-    IF elapsed_ds >= 150 AND elapsed_ds < 170 AND alarm_1201_acked = 0 AND restart_active = 0 THEN
+    ' Check if 1201 needs acknowledgment at 0:19 (MET 553 - RESTART)
+    IF elapsed_ds >= 190 AND elapsed_ds < 210 AND alarm_1201_acked = 0 AND restart_active = 0 THEN
       ' Trigger RESTART sequence
       alarm_1201_acked = 1
       lamp_state(5) = 0  ' Turn off PROG
@@ -1382,8 +1408,8 @@ SUB RunLunarDescent
       restart_start_time = TIMER
     END IF
     
-    ' 1202 alarm from 0:47 to 0:50 (470-500 deciseconds)
-    IF elapsed_ds >= 470 AND elapsed_ds < 500 AND alarm_1202_acked = 0 THEN
+    ' 1202 alarm from 0:46 to 1:00 (460-600 deciseconds) - MET 580-594
+    IF elapsed_ds >= 460 AND elapsed_ds < 600 AND alarm_1202_acked = 0 THEN
       in_alarm = 1
       alarm_type = 2
       ' Mark when alarm started (only first time we see it)
@@ -1397,8 +1423,8 @@ SUB RunLunarDescent
       ' Check if it's time to acknowledge based on audio time
       should_acknowledge = 0
       
-      ' 1202 alarm acknowledged ~2 seconds after it appears
-      IF alarm_type = 2 AND alarm_start_time > 0 AND (TIMER - alarm_start_time) >= 2000 AND restart_active = 0 THEN
+      ' 1202 alarm acknowledged at 1:00 (600 deciseconds) - MET 594
+      IF alarm_type = 2 AND elapsed_ds >= 600 AND restart_active = 0 THEN
         should_acknowledge = 1
       END IF
       
@@ -1461,7 +1487,7 @@ SUB RunLunarDescent
         ' Resume normal display
         altitude = InterpolateAltitude(elapsed_ds)
         desc_rate = InterpolateDescentRate(elapsed_ds)
-        pdi_seconds = (elapsed_ds / 10) + 533  ' Add 533 seconds from actual PDI
+        pdi_seconds = (elapsed_ds / 10) + 534  ' Add 534 seconds MET offset
         UpdateDescentDisplay pdi_seconds, desc_rate, altitude
       END IF
       
@@ -1474,11 +1500,23 @@ SUB RunLunarDescent
       altitude = InterpolateAltitude(elapsed_ds)
       desc_rate = InterpolateDescentRate(elapsed_ds)
       
-      ' PDI time in seconds (starts at 533 seconds from actual PDI)
-      pdi_seconds = (elapsed_ds / 10) + 533
+      ' MET in seconds (starts at 534 seconds)
+      pdi_seconds = (elapsed_ds / 10) + 534
       
       ' Update displays
       UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+    END IF
+    
+    ' Turn on ALT and VEL lamps at MET 661 (audio 2:07)
+    IF elapsed_ds >= 1270 THEN
+      lamp_state(11) = 1  ' ALT lamp
+      lamp_state(13) = 1  ' VEL lamp
+      ' Only update lamps once when we first cross the threshold
+      IF alt_vel_on = 0 THEN
+        UpdateSingleLamp 11
+        UpdateSingleLamp 13
+        alt_vel_on = 1
+      END IF
     END IF
     
     ' Activity lamp blinking with realistic patterns

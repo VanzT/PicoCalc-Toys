@@ -35,7 +35,7 @@ do
      NEXT
      BITBANG WS2812 O, GP28, LEDCOUNT, ledBuf%()
      
-     ' Run menu.bas
+     ' Run menu
      RUN "B:menu.bas"
  END IF
 
@@ -69,18 +69,26 @@ do
   circle sx,sy,s,,,c,c
  next i
 
- ' --- Natural LED twinkle ---
+ ' --- LED twinkle + occasional full-LED bursts ---
  IF ledEnabled THEN
+     ' Individual LED twinkle
      FOR i=0 TO LEDCOUNT-1
          IF ledFade%(i)=0 THEN
              IF RND < 0.015 THEN
-                 ledMax%(i) = 200 + INT(RND*55)   ' random peak brightness 200-255
+                 ledMax%(i) = 200 + INT(RND*55)   ' normal twinkle
                  ledFade%(i) = ledMax%(i)
              END IF
          END IF
      NEXT
 
-     ' --- Fade LEDs ---
+     ' Occasional full-LED burst (~1% per frame)
+     IF RND < 0.01 THEN
+         FOR i=0 TO LEDCOUNT-1
+             ledFade%(i) = 255
+         NEXT
+     END IF
+
+     ' Fade LEDs
      FOR i=0 TO LEDCOUNT-1
          IF ledFade%(i) > 0 THEN
              ledBuf%(i) = ledFade%(i)*&H10101  ' white
@@ -91,7 +99,7 @@ do
          END IF
      NEXT
 
-     ' --- Send LED buffer ---
+     ' Send LED buffer
      BITBANG WS2812 O, GP28, LEDCOUNT, ledBuf%()
  END IF
 

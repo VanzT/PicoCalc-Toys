@@ -20,9 +20,9 @@ CONST MODE_LUNAR_DESCENT = 5
 CONST MODE_ALARM = 6         ' New: Alarm mode for 1201/1202
 
 ' V16 N68 - Lunar Descent Data Arrays
-DIM descent_time_keys(17) AS INTEGER    ' Audio time in deciseconds
-DIM descent_alt_keys(17) AS INTEGER     ' Altitude in feet
-DIM descent_rate_keys(17) AS INTEGER    ' Descent rate in ft/sec (negative)
+DIM descent_time_keys(23) AS INTEGER    ' Audio time in deciseconds
+DIM descent_alt_keys(23) AS INTEGER     ' Altitude in feet
+DIM descent_rate_keys(23) AS INTEGER    ' Descent rate in ft/sec (negative)
 
 ' Global variables for input state
 DIM input_mode AS INTEGER
@@ -1224,102 +1224,130 @@ END SUB
 ' V16 N68 - Initialize Lunar Descent Data
 ' ========================================
 SUB InitLunarDescentData
-  ' Accurate Apollo 11 descent data
-  ' Time is Mission Elapsed Time (MET) in seconds shown in R1
-  ' All times relative to audio start at MET 534
+  ' Accurate Apollo 11 descent data from PicoCalc
+  ' Time is audio elapsed time in deciseconds
+  ' R1 is MET seconds, converted to audio time: (MET - 534) * 10 = deciseconds
   
-  ' Audio time 0:00 - MET 534
-  descent_time_keys(0) = 0
+  ' Add initial keyframes to cover from audio start to first PicoCalc data
+  ' MET 534: Audio start (estimated values for smooth descent)
+  descent_time_keys(0) = 0      ' Audio 0:00 - MET 534
   descent_alt_keys(0) = 3368
   descent_rate_keys(0) = -737
   
-  ' Audio time 0:06 - MET 540 (1201 alarm begins)
-  descent_time_keys(1) = 60
-  descent_alt_keys(1) = 3016
-  descent_rate_keys(1) = -702
+  ' MET 558: Intermediate point (estimated)
+  descent_time_keys(1) = 240    ' Audio 0:24 - MET 558
+  descent_alt_keys(1) = 2000
+  descent_rate_keys(1) = -500
   
-  ' Audio time 0:19 - MET 553 (1201 cleared, RESTART)
-  descent_time_keys(2) = 190
-  descent_alt_keys(2) = 2292
-  descent_rate_keys(2) = -559
+  ' MET 580: Intermediate point (estimated for 1202 alarm period)
+  descent_time_keys(2) = 460    ' Audio 0:46 - MET 580
+  descent_alt_keys(2) = 1000
+  descent_rate_keys(2) = -300
   
-  ' Audio time 0:31 - MET 565
-  descent_time_keys(3) = 310
-  descent_alt_keys(3) = 1727
-  descent_rate_keys(3) = -439
+  ' MET 595: R1=595, R2=-170, R3=600 (First PicoCalc data point)
+  descent_time_keys(3) = 610    ' Audio 1:01 - MET 595
+  descent_alt_keys(3) = 600
+  descent_rate_keys(3) = -170
   
-  ' Audio time 0:46 - MET 580 (1202 alarm begins)
-  descent_time_keys(4) = 460
-  descent_alt_keys(4) = 1215
-  descent_rate_keys(4) = -324
+  ' MET 599: R1=599, R2=-150, R3=540
+  descent_time_keys(4) = 650    ' Audio 1:05 - MET 599
+  descent_alt_keys(4) = 540
+  descent_rate_keys(4) = -150
   
-  ' Audio time 1:00 - MET 594 (1202 cleared, RESTART)
-  descent_time_keys(5) = 600
-  descent_alt_keys(5) = 776
-  descent_rate_keys(5) = -286
+  ' MET 610: R1=610, R2=-90, R3=400
+  descent_time_keys(5) = 760    ' Audio 1:16 - MET 610
+  descent_alt_keys(5) = 400
+  descent_rate_keys(5) = -90
   
-  ' Audio time 1:13 - MET 607
-  descent_time_keys(6) = 730
-  descent_alt_keys(6) = 535
-  descent_rate_keys(6) = -148
+  ' MET 617: R1=617, R2=-40, R3=350
+  descent_time_keys(6) = 830    ' Audio 1:23 - MET 617
+  descent_alt_keys(6) = 350
+  descent_rate_keys(6) = -40
   
-  ' Audio time 1:19 - MET 613
-  descent_time_keys(7) = 790
-  descent_alt_keys(7) = 452
-  descent_rate_keys(7) = -112
+  ' MET 630: R1=630, R2=-35, R3=300
+  descent_time_keys(7) = 960    ' Audio 1:36 - MET 630
+  descent_alt_keys(7) = 300
+  descent_rate_keys(7) = -35
   
-  ' Audio time 1:27 - MET 621
-  descent_time_keys(8) = 870
-  descent_alt_keys(8) = 365
-  descent_rate_keys(8) = -55
+  ' MET 637: R1=637, R2=-15, R3=281 (interpolated)
+  descent_time_keys(8) = 1030   ' Audio 1:43 - MET 637
+  descent_alt_keys(8) = 281
+  descent_rate_keys(8) = -15
   
-  ' Audio time 1:42 - MET 636
-  descent_time_keys(9) = 1020
-  descent_alt_keys(9) = 301
-  descent_rate_keys(9) = -35
+  ' MET 641: R1=641, R2=-15, R3=270 (R2 interpolated)
+  descent_time_keys(9) = 1070   ' Audio 1:47 - MET 641
+  descent_alt_keys(9) = 270
+  descent_rate_keys(9) = -15
   
-  ' Audio time 1:58 - MET 652
-  descent_time_keys(10) = 1180
-  descent_alt_keys(10) = 261
-  descent_rate_keys(10) = -19
+  ' MET 652: R1=652, R2=-15, R3=250
+  descent_time_keys(10) = 1180  ' Audio 1:58 - MET 652
+  descent_alt_keys(10) = 250
+  descent_rate_keys(10) = -15
   
-  ' Audio time 2:04 - MET 658
-  descent_time_keys(11) = 1240
-  descent_alt_keys(11) = 250
-  descent_rate_keys(11) = -25
+  ' MET 660: R1=660, R2=-35, R3=220
+  descent_time_keys(11) = 1260  ' Audio 2:06 - MET 660
+  descent_alt_keys(11) = 220
+  descent_rate_keys(11) = -35
   
-  ' Audio time 2:07 - MET 661 (ALT and VEL lamps turn on)
-  descent_time_keys(12) = 1270
-  descent_alt_keys(12) = 239
-  descent_rate_keys(12) = -28
+  ' MET 668: R1=668, R2=-45, R3=200
+  descent_time_keys(12) = 1340  ' Audio 2:14 - MET 668
+  descent_alt_keys(12) = 200
+  descent_rate_keys(12) = -45
   
-  ' Audio time 2:17 - MET 671
-  descent_time_keys(13) = 1370
-  descent_alt_keys(13) = 212
-  descent_rate_keys(13) = -38
+  ' MET 675: R1=675, R2=-65, R3=160
+  descent_time_keys(13) = 1410  ' Audio 2:21 - MET 675
+  descent_alt_keys(13) = 160
+  descent_rate_keys(13) = -65
   
-  ' Audio time 2:27 - MET 681
-  descent_time_keys(14) = 1470
-  descent_alt_keys(14) = 164
-  descent_rate_keys(14) = -63
+  ' MET 676: R1=676, R2=-65, R3=156 (R3 interpolated)
+  descent_time_keys(14) = 1420  ' Audio 2:22 - MET 676
+  descent_alt_keys(14) = 156
+  descent_rate_keys(14) = -65
   
-  ' Audio time 2:37 - MET 691
-  descent_time_keys(15) = 1570
-  descent_alt_keys(15) = 117
-  descent_rate_keys(15) = -44
+  ' MET 684: R1=684, R2=-47, R3=120 (R2 interpolated)
+  descent_time_keys(15) = 1500  ' Audio 2:30 - MET 684
+  descent_alt_keys(15) = 120
+  descent_rate_keys(15) = -47
   
-  ' Audio time 2:47 - MET 701
-  descent_time_keys(16) = 1670
-  descent_alt_keys(16) = 86
-  descent_rate_keys(16) = -28
+  ' MET 689: R1=689, R2=-35, R3=100
+  descent_time_keys(16) = 1550  ' Audio 2:35 - MET 689
+  descent_alt_keys(16) = 100
+  descent_rate_keys(16) = -35
   
-  ' Audio time 2:57 - MET 711
-  descent_time_keys(17) = 1770
-  descent_alt_keys(17) = 65
-  descent_rate_keys(17) = -25
-END SUB
-  descent_alt_keys(17) = 0
-  descent_rate_keys(17) = 0
+  ' MET 698: R1=698, R2=-31, R3=75 (R2 interpolated)
+  descent_time_keys(17) = 1640  ' Audio 2:44 - MET 698
+  descent_alt_keys(17) = 75
+  descent_rate_keys(17) = -31
+  
+  ' MET 711: R1=711, R2=-25, R3=55 (R3 interpolated)
+  descent_time_keys(18) = 1770  ' Audio 2:57 - MET 711
+  descent_alt_keys(18) = 55
+  descent_rate_keys(18) = -25
+  
+  ' MET 721: R1=721, R2=-25, R3=40
+  descent_time_keys(19) = 1870  ' Audio 3:07 - MET 721
+  descent_alt_keys(19) = 40
+  descent_rate_keys(19) = -25
+  
+  ' MET 724: R1=724, R2=-25, R3=30
+  descent_time_keys(20) = 1900  ' Audio 3:10 - MET 724
+  descent_alt_keys(20) = 30
+  descent_rate_keys(20) = -25
+  
+  ' MET 734: R1=734, R2=-5, R3=17 (R3 interpolated)
+  descent_time_keys(21) = 2000  ' Audio 3:20 - MET 734
+  descent_alt_keys(21) = 17
+  descent_rate_keys(21) = -5
+  
+  ' MET 743: R1=743, R2=-9, R3=5 CONTACT LIGHT (R2/R3 estimated)
+  descent_time_keys(22) = 2090  ' Audio 3:29 - MET 743
+  descent_alt_keys(22) = 5
+  descent_rate_keys(22) = -9
+  
+  ' MET 747: R1=747, R2=0, R3=0 TOUCHDOWN
+  descent_time_keys(23) = 2130  ' Audio 3:33 - MET 747
+  descent_alt_keys(23) = 0
+  descent_rate_keys(23) = 0
 END SUB
 
 ' ========================================
@@ -1408,8 +1436,10 @@ SUB RunLunarDescent
       restart_start_time = TIMER
     END IF
     
-    ' 1202 alarm from 0:46 to 1:00 (460-600 deciseconds) - MET 580-594
-    IF elapsed_ds >= 460 AND elapsed_ds < 600 AND alarm_1202_acked = 0 THEN
+    ' 1202 alarm from 0:46 (460 deciseconds) - MET 580
+    ' RESTART lights at 0:49 (490 deciseconds) - 3 seconds after alarm - MET 583
+    ' Both PROG and RESTART clear at 0:50 (500 deciseconds) - 1 second after RESTART - MET 584
+    IF elapsed_ds >= 460 AND elapsed_ds < 500 AND alarm_1202_acked = 0 THEN
       in_alarm = 1
       alarm_type = 2
       ' Mark when alarm started (only first time we see it)
@@ -1418,13 +1448,20 @@ SUB RunLunarDescent
       END IF
     END IF
     
+    ' Turn on RESTART lamp 3 seconds after 1202 alarm starts (at 490 deciseconds)
+    IF elapsed_ds >= 490 AND elapsed_ds < 500 AND alarm_1202_acked = 0 AND alarm_type = 2 THEN
+      lamp_state(7) = 1  ' Turn on RESTART
+      UpdateSingleLamp 7
+      restart_active = 1
+    END IF
+    
     ' Handle alarm display
     IF in_alarm = 1 THEN
-      ' Check if it's time to acknowledge based on audio time
+      ' Check if it's time to clear both PROG and RESTART at 0:50 (500 deciseconds)
       should_acknowledge = 0
       
-      ' 1202 alarm acknowledged at 1:00 (600 deciseconds) - MET 594
-      IF alarm_type = 2 AND elapsed_ds >= 600 AND restart_active = 0 THEN
+      ' 1202 alarm cleared at 0:50 (500 deciseconds) - MET 584
+      IF alarm_type = 2 AND elapsed_ds >= 500 THEN
         should_acknowledge = 1
       END IF
       
@@ -1432,15 +1469,12 @@ SUB RunLunarDescent
         ' Mark alarm as acknowledged
         alarm_1202_acked = 1
         
-        ' Turn off PROG lamp
+        ' Turn off BOTH PROG and RESTART lamps
         lamp_state(5) = 0
+        lamp_state(7) = 0
         UpdateSingleLamp 5
-        
-        ' Turn on RESTART lamp
-        lamp_state(7) = 1
         UpdateSingleLamp 7
-        restart_active = 1
-        restart_start_time = TIMER
+        restart_active = 0
         
         ' Clear alarm state
         in_alarm = 0
@@ -1507,8 +1541,8 @@ SUB RunLunarDescent
       UpdateDescentDisplay pdi_seconds, desc_rate, altitude
     END IF
     
-    ' Turn on ALT and VEL lamps at MET 661 (audio 2:07)
-    IF elapsed_ds >= 1270 THEN
+    ' Turn on ALT and VEL lamps at MET 658 (audio 2:04)
+    IF elapsed_ds >= 1240 THEN
       lamp_state(11) = 1  ' ALT lamp
       lamp_state(13) = 1  ' VEL lamp
       ' Only update lamps once when we first cross the threshold
@@ -1580,7 +1614,7 @@ FUNCTION InterpolateAltitude(current_time)
   LOCAL i, t1, t2, v1, v2, fraction
   
   ' Find which keyframe pair we're between
-  FOR i = 0 TO 16
+  FOR i = 0 TO 22
     IF current_time >= descent_time_keys(i) AND current_time <= descent_time_keys(i+1) THEN
       t1 = descent_time_keys(i)
       t2 = descent_time_keys(i+1)
@@ -1601,7 +1635,7 @@ FUNCTION InterpolateAltitude(current_time)
   NEXT i
   
   ' If past last keyframe, return last value
-  InterpolateAltitude = descent_alt_keys(17)
+  InterpolateAltitude = descent_alt_keys(23)
 END FUNCTION
 
 ' ========================================
@@ -1611,7 +1645,7 @@ FUNCTION InterpolateDescentRate(current_time)
   LOCAL i, t1, t2, v1, v2, fraction
   
   ' Find which keyframe pair we're between
-  FOR i = 0 TO 16
+  FOR i = 0 TO 22
     IF current_time >= descent_time_keys(i) AND current_time <= descent_time_keys(i+1) THEN
       t1 = descent_time_keys(i)
       t2 = descent_time_keys(i+1)
@@ -1632,7 +1666,7 @@ FUNCTION InterpolateDescentRate(current_time)
   NEXT i
   
   ' If past last keyframe, return last value
-  InterpolateDescentRate = descent_rate_keys(17)
+  InterpolateDescentRate = descent_rate_keys(23)
 END FUNCTION
 
 ' ========================================

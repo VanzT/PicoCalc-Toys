@@ -1390,7 +1390,9 @@ SUB RunLunarDescent
   LOCAL uplink_interval
   LOCAL comp_interval
   LOCAL alt_vel_on
-  LOCAL r1_int, r2_int, r3_int  ' Integer values for change detection
+  LOCAL r1_int
+  LOCAL r2_int
+  LOCAL r3_int
   
   ' Track last displayed register values to avoid unnecessary redraws
   LOCAL last_r1 = -1

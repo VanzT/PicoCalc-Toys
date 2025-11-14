@@ -1427,8 +1427,8 @@ SUB RunLunarDescent
     in_alarm = 0
     alarm_type = 0
     
-    ' 1201 alarm from 0:07 to 0:19 (70-190 deciseconds) - MET 541-553
-    IF elapsed_ds >= 70 AND elapsed_ds < 190 AND alarm_1201_acked = 0 THEN
+    ' 1201 alarm from 0:08 to 0:19 (80-190 deciseconds) - MET 542-553
+    IF elapsed_ds >= 80 AND elapsed_ds < 190 AND alarm_1201_acked = 0 THEN
       in_alarm = 1
       alarm_type = 1
     END IF
@@ -1562,15 +1562,23 @@ SUB RunLunarDescent
       ' MET in seconds (starts at 534 seconds)
       pdi_seconds = (elapsed_ds / 10) + 534
       
-      ' Only update display if integer values changed
+      ' Only update registers that changed
       r1_int = INT(pdi_seconds)
       r2_int = INT(ABS(desc_rate))
       r3_int = INT(altitude)
       
-      IF r1_int <> last_r1 OR r2_int <> last_r2 OR r3_int <> last_r3 THEN
-        UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+      IF r1_int <> last_r1 THEN
+        UpdateR1Display pdi_seconds
         last_r1 = r1_int
+      END IF
+      
+      IF r2_int <> last_r2 THEN
+        UpdateR2Display desc_rate
         last_r2 = r2_int
+      END IF
+      
+      IF r3_int <> last_r3 THEN
+        UpdateR3Display altitude
         last_r3 = r3_int
       END IF
     END IF
@@ -1704,9 +1712,47 @@ FUNCTION InterpolateDescentRate(current_time)
 END FUNCTION
 
 ' ========================================
-' Update Descent Display (R1, R2, R3)
+' Update R1 Display (MET Time)
 ' ========================================
-SUB UpdateDescentDisplay pdi_time, descent_rate, altitude
+SUB UpdateR1Display pdi_time
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  
+  ' R1: Time from PDI (seconds, format +0SSS)
+  BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  DrawSign PANEL_X2+15, data1_y+line_offset, 14, 32, "+"
+  DrawDescentFourDigits PANEL_X2+54, data1_y+line_offset, digit_w, digit_h, INT(pdi_time)
+END SUB
+
+' ========================================
+' Update R2 Display (Descent Rate)
+' ========================================
+SUB UpdateR2Display descent_rate
+  LOCAL row_h = 62
+  LOCAL digit_w = 18
+  LOCAL digit_h = 30
+  LOCAL row3_y = PANEL_Y + 8 + row_h * 2
+  LOCAL row_spacing = 56
+  LOCAL line_offset = 10
+  LOCAL data1_y = row3_y + 18
+  LOCAL data2_y = data1_y + row_spacing
+  
+  ' R2: Descent speed (ft/sec, always negative during descent, format -0FFF)
+  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
+  ' Always show minus sign for descent
+  DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "-"
+  ' Take absolute value for display
+  DrawDescentFourDigits PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, INT(ABS(descent_rate))
+END SUB
+
+' ========================================
+' Update R3 Display (Altitude)
+' ========================================
+SUB UpdateR3Display altitude
   LOCAL row_h = 62
   LOCAL digit_w = 18
   LOCAL digit_h = 30
@@ -1717,22 +1763,19 @@ SUB UpdateDescentDisplay pdi_time, descent_rate, altitude
   LOCAL data2_y = data1_y + row_spacing
   LOCAL data3_y = data2_y + row_spacing
   
-  ' R1: Time from PDI (seconds, format +0SSS)
-  BOX PANEL_X2+33, data1_y+line_offset, 102, digit_h, 0, , CLR_PANEL
-  DrawSign PANEL_X2+15, data1_y+line_offset, 14, 32, "+"
-  DrawDescentFourDigits PANEL_X2+54, data1_y+line_offset, digit_w, digit_h, INT(pdi_time)
-  
-  ' R2: Descent speed (ft/sec, always negative during descent, format -0FFF)
-  BOX PANEL_X2+33, data2_y+line_offset, 102, digit_h, 0, , CLR_PANEL
-  ' Always show minus sign for descent
-  DrawSign PANEL_X2+15, data2_y+line_offset, 14, 32, "-"
-  ' Take absolute value for display
-  DrawDescentFourDigits PANEL_X2+54, data2_y+line_offset, digit_w, digit_h, INT(ABS(descent_rate))
-  
   ' R3: Altitude (feet, format +FFFF)
   BOX PANEL_X2+33, data3_y+line_offset, 102, digit_h, 0, , CLR_PANEL
   DrawSign PANEL_X2+15, data3_y+line_offset, 14, 32, "+"
   DrawDescentFourDigits PANEL_X2+54, data3_y+line_offset, digit_w, digit_h, INT(altitude)
+END SUB
+
+' ========================================
+' Update Descent Display (R1, R2, R3) - All registers
+' ========================================
+SUB UpdateDescentDisplay pdi_time, descent_rate, altitude
+  UpdateR1Display pdi_time
+  UpdateR2Display descent_rate
+  UpdateR3Display altitude
 END SUB
 
 ' ========================================

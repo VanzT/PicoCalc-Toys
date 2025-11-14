@@ -1379,6 +1379,7 @@ SUB RunLunarDescent
   LOCAL restart_active = 0    ' RESTART lamp showing
   LOCAL restart_start_time = 0
   LOCAL should_acknowledge = 0 ' Flag for alarm acknowledgment
+  LOCAL last_prog_state = -1  ' Track PROG lamp state to avoid flicker
   
   ' Loop variables
   LOCAL elapsed_ds
@@ -1481,8 +1482,10 @@ SUB RunLunarDescent
         alarm_start_time = 0
       ELSE
         ' Still in alarm - show PROG lamp and blink alarm code
-        lamp_state(5) = 1
-        UpdateSingleLamp 5
+        IF lamp_state(5) = 0 THEN  ' Only turn on if currently off
+          lamp_state(5) = 1
+          UpdateSingleLamp 5
+        END IF
         
         ' Blink alarm code in R1 and R2
         IF TIMER - alarm_blink_timer >= 500 THEN
@@ -1508,8 +1511,10 @@ SUB RunLunarDescent
       
     ELSE IF restart_active = 1 THEN
       ' RESTART lamp is showing - ensure PROG is off
-      lamp_state(5) = 0
-      UpdateSingleLamp 5
+      IF lamp_state(5) = 1 THEN  ' Only turn off if currently on
+        lamp_state(5) = 0
+        UpdateSingleLamp 5
+      END IF
       
       ' Check if 2 seconds have passed
       IF (TIMER - restart_start_time) >= 2000 THEN
@@ -1527,8 +1532,10 @@ SUB RunLunarDescent
       
     ELSE
       ' Normal display - ensure PROG is off
-      lamp_state(5) = 0
-      UpdateSingleLamp 5
+      IF lamp_state(5) = 1 THEN  ' Only turn off if currently on
+        lamp_state(5) = 0
+        UpdateSingleLamp 5
+      END IF
       
       ' Interpolate and show values
       altitude = InterpolateAltitude(elapsed_ds)

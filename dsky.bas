@@ -1390,6 +1390,12 @@ SUB RunLunarDescent
   LOCAL uplink_interval
   LOCAL comp_interval
   LOCAL alt_vel_on
+  LOCAL r1_int, r2_int, r3_int  ' Integer values for change detection
+  
+  ' Track last displayed register values to avoid unnecessary redraws
+  LOCAL last_r1 = -1
+  LOCAL last_r2 = -9999
+  LOCAL last_r3 = -1
   
   ' Initialize
   alt_vel_on = 0
@@ -1419,8 +1425,8 @@ SUB RunLunarDescent
     in_alarm = 0
     alarm_type = 0
     
-    ' 1201 alarm from 0:06 to 0:19 (60-190 deciseconds) - MET 540-553
-    IF elapsed_ds >= 60 AND elapsed_ds < 190 AND alarm_1201_acked = 0 THEN
+    ' 1201 alarm from 0:07 to 0:19 (70-190 deciseconds) - MET 541-553
+    IF elapsed_ds >= 70 AND elapsed_ds < 190 AND alarm_1201_acked = 0 THEN
       in_alarm = 1
       alarm_type = 1
     END IF
@@ -1480,6 +1486,11 @@ SUB RunLunarDescent
         ' Clear alarm state
         in_alarm = 0
         alarm_start_time = 0
+        
+        ' Reset tracking variables to force redraw when resuming
+        last_r1 = -1
+        last_r2 = -9999
+        last_r3 = -1
       ELSE
         ' Still in alarm - show PROG lamp and blink alarm code
         IF lamp_state(5) = 0 THEN  ' Only turn on if currently off
@@ -1523,11 +1534,16 @@ SUB RunLunarDescent
         UpdateSingleLamp 7
         restart_active = 0
         
-        ' Resume normal display
+        ' Resume normal display - force redraw after RESTART clears
         altitude = InterpolateAltitude(elapsed_ds)
         desc_rate = InterpolateDescentRate(elapsed_ds)
         pdi_seconds = (elapsed_ds / 10) + 534  ' Add 534 seconds MET offset
         UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+        
+        ' Update tracking variables
+        last_r1 = INT(pdi_seconds)
+        last_r2 = INT(ABS(desc_rate))
+        last_r3 = INT(altitude)
       END IF
       
     ELSE
@@ -1544,8 +1560,17 @@ SUB RunLunarDescent
       ' MET in seconds (starts at 534 seconds)
       pdi_seconds = (elapsed_ds / 10) + 534
       
-      ' Update displays
-      UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+      ' Only update display if integer values changed
+      r1_int = INT(pdi_seconds)
+      r2_int = INT(ABS(desc_rate))
+      r3_int = INT(altitude)
+      
+      IF r1_int <> last_r1 OR r2_int <> last_r2 OR r3_int <> last_r3 THEN
+        UpdateDescentDisplay pdi_seconds, desc_rate, altitude
+        last_r1 = r1_int
+        last_r2 = r2_int
+        last_r3 = r3_int
+      END IF
     END IF
     
     ' Turn on ALT and VEL lamps at MET 658 (audio 2:04)

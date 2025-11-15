@@ -190,7 +190,7 @@ SUB DrawStatusPanel
   END IF
   
   ' 1-pixel spacing row after Row 4
-  LINE PANEL_X1+5, PANEL_Y+175, PANEL_X1+PANEL_W1-5, PANEL_Y+175, 1, CLR_GRAY
+  LINE PANEL_X1+5, PANEL_Y+175, PANEL_X1+PANEL_W1-5, PANEL_Y+175, 1, CLR_PANEL
   
   ' Row 5
   IF lamp_state(8) = 1 THEN
@@ -206,7 +206,7 @@ SUB DrawStatusPanel
   END IF
   
   ' 1-pixel spacing row after Row 5
-  LINE PANEL_X1+5, PANEL_Y+218, PANEL_X1+PANEL_W1-5, PANEL_Y+218, 1, CLR_GRAY
+  LINE PANEL_X1+5, PANEL_Y+218, PANEL_X1+PANEL_W1-5, PANEL_Y+218, 1, CLR_PANEL
   
   ' Row 6
   IF lamp_state(10) = 1 THEN

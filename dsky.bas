@@ -189,43 +189,49 @@ SUB DrawStatusPanel
     DrawIndicator PANEL_X1+78, PANEL_Y+134, 65, 40, "RESTART", CLR_OFF
   END IF
   
+  ' 1-pixel spacing row after Row 4
+  LINE PANEL_X1+5, PANEL_Y+175, PANEL_X1+PANEL_W1-5, PANEL_Y+175, 1, CLR_GRAY
+  
   ' Row 5
   IF lamp_state(8) = 1 THEN
-    DrawIndicator PANEL_X1+5, PANEL_Y+176, 65, 40, "OPR ERR", CLR_WHITE
+    DrawIndicator PANEL_X1+5, PANEL_Y+177, 65, 40, "OPR ERR", CLR_WHITE
   ELSE
-    DrawIndicator PANEL_X1+5, PANEL_Y+176, 65, 40, "OPR ERR", CLR_OFF
+    DrawIndicator PANEL_X1+5, PANEL_Y+177, 65, 40, "OPR ERR", CLR_OFF
   END IF
   
   IF lamp_state(9) = 1 THEN
-    DrawIndicator PANEL_X1+78, PANEL_Y+176, 65, 40, "TRACKER", CLR_YELLOW
+    DrawIndicator PANEL_X1+78, PANEL_Y+177, 65, 40, "TRACKER", CLR_YELLOW
   ELSE
-    DrawIndicator PANEL_X1+78, PANEL_Y+176, 65, 40, "TRACKER", CLR_OFF
+    DrawIndicator PANEL_X1+78, PANEL_Y+177, 65, 40, "TRACKER", CLR_OFF
   END IF
+  
+  ' 1-pixel spacing row after Row 5
+  LINE PANEL_X1+5, PANEL_Y+218, PANEL_X1+PANEL_W1-5, PANEL_Y+218, 1, CLR_GRAY
   
   ' Row 6
   IF lamp_state(10) = 1 THEN
-    DrawIndicator PANEL_X1+5, PANEL_Y+218, 65, 40, "", CLR_WHITE
+    DrawIndicator PANEL_X1+5, PANEL_Y+220, 65, 40, "", CLR_WHITE
   ELSE
-    DrawIndicator PANEL_X1+5, PANEL_Y+218, 65, 40, "", CLR_OFF
+    DrawIndicator PANEL_X1+5, PANEL_Y+220, 65, 40, "", CLR_OFF
   END IF
   
   IF lamp_state(11) = 1 THEN
-    DrawIndicator PANEL_X1+78, PANEL_Y+218, 65, 40, "ALT", CLR_YELLOW
+    DrawIndicator PANEL_X1+78, PANEL_Y+220, 65, 40, "ALT", CLR_YELLOW
   ELSE
-    DrawIndicator PANEL_X1+78, PANEL_Y+218, 65, 40, "ALT", CLR_OFF
+    DrawIndicator PANEL_X1+78, PANEL_Y+220, 65, 40, "ALT", CLR_OFF
   END IF
   
   ' Row 7
   IF lamp_state(12) = 1 THEN
-    DrawIndicator PANEL_X1+5, PANEL_Y+260, 65, 40, "", CLR_WHITE
+    DrawIndicator PANEL_X1+5, PANEL_Y+262, 65, 40, "", CLR_WHITE
   ELSE
-    DrawIndicator PANEL_X1+5, PANEL_Y+260, 65, 40, "", CLR_OFF
+    DrawIndicator PANEL_X1+5, PANEL_Y+262, 65, 40, "", CLR_OFF
   END IF
   
   IF lamp_state(13) = 1 THEN
-    DrawIndicator PANEL_X1+78, PANEL_Y+260, 65, 40, "VEL", CLR_YELLOW
+    DrawIndicator PANEL_X1+78, PANEL_Y+262, 65, 40, "VEL", CLR_YELLOW
   ELSE
-    DrawIndicator PANEL_X1+78, PANEL_Y+260, 65, 40, "VEL", CLR_OFF
+    DrawIndicator PANEL_X1+78, PANEL_Y+262, 65, 40, "VEL", CLR_OFF
   END IF
   
 END SUB
@@ -311,7 +317,7 @@ SUB UpdateSingleLamp lamp_num
       END IF
       
     CASE 8  ' OPR ERR
-      x = PANEL_X1+5: y = PANEL_Y+176: w = 65: h = 40
+      x = PANEL_X1+5: y = PANEL_Y+177: w = 65: h = 40
       label$ = "OPR ERR"
       IF lamp_state(8) = 1 THEN
         clr = CLR_WHITE
@@ -320,7 +326,7 @@ SUB UpdateSingleLamp lamp_num
       END IF
       
     CASE 9  ' TRACKER
-      x = PANEL_X1+78: y = PANEL_Y+176: w = 65: h = 40
+      x = PANEL_X1+78: y = PANEL_Y+177: w = 65: h = 40
       label$ = "TRACKER"
       IF lamp_state(9) = 1 THEN
         clr = CLR_YELLOW
@@ -329,7 +335,7 @@ SUB UpdateSingleLamp lamp_num
       END IF
       
     CASE 10  ' Blank
-      x = PANEL_X1+5: y = PANEL_Y+218: w = 65: h = 40
+      x = PANEL_X1+5: y = PANEL_Y+220: w = 65: h = 40
       label$ = ""
       IF lamp_state(10) = 1 THEN
         clr = CLR_WHITE
@@ -338,7 +344,7 @@ SUB UpdateSingleLamp lamp_num
       END IF
       
     CASE 11  ' ALT
-      x = PANEL_X1+78: y = PANEL_Y+218: w = 65: h = 40
+      x = PANEL_X1+78: y = PANEL_Y+220: w = 65: h = 40
       label$ = "ALT"
       IF lamp_state(11) = 1 THEN
         clr = CLR_YELLOW
@@ -347,7 +353,7 @@ SUB UpdateSingleLamp lamp_num
       END IF
       
     CASE 12  ' Blank
-      x = PANEL_X1+5: y = PANEL_Y+260: w = 65: h = 40
+      x = PANEL_X1+5: y = PANEL_Y+262: w = 65: h = 40
       label$ = ""
       IF lamp_state(12) = 1 THEN
         clr = CLR_WHITE
@@ -356,7 +362,7 @@ SUB UpdateSingleLamp lamp_num
       END IF
       
     CASE 13  ' VEL
-      x = PANEL_X1+78: y = PANEL_Y+260: w = 65: h = 40
+      x = PANEL_X1+78: y = PANEL_Y+262: w = 65: h = 40
       label$ = "VEL"
       IF lamp_state(13) = 1 THEN
         clr = CLR_YELLOW

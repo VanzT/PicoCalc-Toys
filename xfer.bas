@@ -16,6 +16,11 @@ CONST ACK_TIMEOUT_MS%  = 1200           ' per-chunk wait before retry
 CONST GLOBAL_POLL_MS%  = 10
 CONST MIN_MENU_REDRAW_MS% = 250  ' debounce window for redraws
 
+' -------------------- LED configuration --------------------
+CONST LED_COUNT% = 8
+CONST LED_GPIO%  = 28
+CONST LED_FLASH_MS% = 20        ' duration of each flash
+
 
 ' -------------------- globals (system/network) --------------------
 DIM g_udp_opened%
@@ -75,6 +80,10 @@ DIM g_menu_dirty%         ' 1 when the menu needs a redraw
 DIM g_last_peer_str$      ' "ip name" cache for the menu
 DIM g_debug_silent%       ' 1 = suppress debug prints during transfer
 g_debug_silent% = 1
+
+' -------------------- LED state --------------------
+DIM led_buf%(LED_COUNT%)       ' LED color buffer (1-based due to OPTION BASE 1)
+DIM led_last_flash!            ' timestamp of last LED flash
 
 
 ' ===========================================================================
@@ -341,6 +350,9 @@ SUB SendNextChunk(peer_ip$)
   packet$    = "FILE_CHUNK|" + STR$(s_next_seq%) + "|" + hexChunk$
   UdpSend peer_ip$, packet$
 
+  ' Flash LEDs blue for sending
+  LED_Flash 0, 0, 255
+
   s_waiting_ack_seq% = s_next_seq%
   s_last_send_ts!    = TIMER
   ' advance happens on ack in HandleAck
@@ -436,6 +448,9 @@ SUB HandleChunk(from_ip$, arg$)
   SEEK #8, writePos% + 1
   PRINT #8, payloadBin$;         ' no CRLF
 
+  ' Flash LEDs orange for receiving
+  LED_Flash 255, 165, 0
+
   ' ack and advance
   UdpSend from_ip$, "FILE_ACK|" + STR$(seqIndex%)
   r_expected_seq% = r_expected_seq% + 1
@@ -460,6 +475,9 @@ SUB HandleFileDone(from_ip$, arg$)
   IF (r_recv_sum% AND &HFFFF) = (sum_i% AND &HFFFF) THEN
     ' success
     UdpSend from_ip$, "FILE_DONE|" + STR$(r_recv_sum%) + "|" + STR$(chunks_i%)
+
+    ' Flash LEDs 3 times to indicate completion
+    LED_CompletionFlash
 
     ' Build summary lines
     LOCAL l1$, l2$, l3$
@@ -564,7 +582,8 @@ SUB PromptAndOffer()
   ENDIF
 
   LOCAL path$
-  LINE INPUT "File path to send (e.g. A:/foo.bin): ", path$
+  print "File path to send (e.g. A:/foo.bin): "
+  line input "", path$
   IF LEN(path$) = 0 THEN EXIT SUB
   IF FileExists%(path$) = 0 THEN
     PRINT "Not found: "; path$
@@ -589,15 +608,74 @@ SUB PromptAndOffer()
 END SUB
 
 ' ===========================================================================
+'                              LED FUNCTIONS
+' ===========================================================================
+SUB LED_Init()
+  ' Initialize all LEDs to off
+  LOCAL i%
+  FOR i% = 1 TO LED_COUNT%
+    led_buf%(i%) = 0
+  NEXT
+  BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+  led_last_flash! = 0
+END SUB
+
+SUB LED_Clear()
+  ' Clear all LEDs
+  LOCAL i%
+  FOR i% = 1 TO LED_COUNT%
+    led_buf%(i%) = 0
+  NEXT
+  BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+END SUB
+
+SUB LED_Flash(r%, g%, b%)
+  ' Flash LEDs with specified color (throttled to be visible)
+  ' Color format: RGB packed as (R * &H10000) + (G * &H100) + B
+  LOCAL now!, i%, col%
+
+  now! = TIMER
+  ' Throttle updates so flashes are visible (minimum LED_FLASH_MS% between flashes)
+  IF (now! - led_last_flash!) < LED_FLASH_MS% THEN EXIT SUB
+
+  col% = (r% * &H10000) + (g% * &H100) + b%
+  FOR i% = 1 TO LED_COUNT%
+    led_buf%(i%) = col%
+  NEXT
+  BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+  PAUSE LED_FLASH_MS%
+  LED_Clear
+  led_last_flash! = now!
+END SUB
+
+SUB LED_CompletionFlash()
+  ' Flash all LEDs 3 times in green to indicate transfer completion
+  LOCAL i%, flash%
+  FOR flash% = 1 TO 3
+    ' Green flash
+    FOR i% = 1 TO LED_COUNT%
+      led_buf%(i%) = &H00FF00  ' Green: (0 * &H10000) + (255 * &H100) + 0
+    NEXT
+    BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+    PAUSE 150
+    ' Clear
+    LED_Clear
+    PAUSE 150
+  NEXT
+END SUB
+
+' ===========================================================================
 '                                MAIN
 ' ===========================================================================
 CLS
 PRINT "PicoCalc UDP Discovery + File Transfer"
-OpenUDP
 
-' initialize indices for 1-based arrays
+' initialize indices for 1-based arrays BEFORE enabling interrupts
 q_head% = 1
 q_tail% = 1
+
+OpenUDP
+LED_Init
 
 g_device_name$ = DeviceName$()
 g_my_ip$ = GetMyIP$()
@@ -671,6 +749,8 @@ DO
         HandleFileDone msg_ip$, msg_arg$
     ELSEIF s_active% THEN
       CLOSE #9
+      ' Flash LEDs 3 times to indicate completion
+      LED_CompletionFlash
       ' Build sender summary (mirrors receiver UX)
       l1$ = "Sent: " + s_file_basename$ + " ? " + msg_ip$
       l2$ = "Bytes: " + STR$(s_file_size%) + "  Chunks: " + STR$(s_total_chunks%)

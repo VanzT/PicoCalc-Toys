@@ -55,6 +55,7 @@ DIM p2_power% = 50
 DIM proj_active% = 0
 DIM proj_x!, proj_y!
 DIM proj_vx!, proj_vy!
+DIM proj_prev_x!, proj_prev_y!
 
 ' Wind
 DIM wind! = 0.0
@@ -228,20 +229,28 @@ SUB FireProjectile
     proj_vx! = -v0! * COS(angle_rad!)
     proj_vy! = -v0! * SIN(angle_rad!)
   ENDIF
-  
+
+  ' Initialize previous position
+  proj_prev_x! = proj_x!
+  proj_prev_y! = proj_y!
+
   proj_active% = 1
 END SUB
 
 ' === SUB: Update projectile ===
 SUB UpdateProjectile
-  LOCAL hit%, px%, py%
-  
+  LOCAL hit%, px%, py%, check_x%, t!, interp_x!, interp_y!
+
   IF proj_active% = 0 THEN EXIT SUB
-  
+
+  ' Store previous position
+  proj_prev_x! = proj_x!
+  proj_prev_y! = proj_y!
+
   ' Update velocity
   proj_vy! = proj_vy! + GRAVITY!
   proj_vx! = proj_vx! + wind! * 0.1
-  
+
   ' Update position
   proj_x! = proj_x! + proj_vx!
   proj_y! = proj_y! + proj_vy!
@@ -260,22 +269,53 @@ SUB UpdateProjectile
   ' Check if too far down
   IF proj_y! > GROUND_Y% + 20 THEN
     proj_active% = 0
-    SwitchTurn
+    IF currentPlayer% = myPlayer% THEN
+      SwitchTurn
+    ENDIF
     EXIT SUB
   ENDIF
-  
-  ' Check if off screen and moving away
-  IF (proj_x! < -50 AND proj_vx! < 0) OR (proj_x! > SCREEN_W% + 50 AND proj_vx! > 0) THEN
+
+  ' Check if off screen (outside terrain bounds)
+  IF proj_x! < 0 OR proj_x! > SCREEN_W% + 1 THEN
     proj_active% = 0
-    SwitchTurn
+    IF currentPlayer% = myPlayer% THEN
+      SwitchTurn
+    ENDIF
     EXIT SUB
   ENDIF
   
-  ' Check terrain collision
-  IF INT(proj_x!) >= 1 AND INT(proj_x!) <= SCREEN_W% THEN
-    IF proj_y! >= terrain%(INT(proj_x!)) THEN
-      proj_active% = 0
-      hit% = 0
+  ' Check terrain collision using line segment test
+  ' Sample every x position between previous and current
+  LOCAL min_x%, max_x%, dx!, dy!, step_count%, i%
+
+  min_x% = INT(proj_prev_x!)
+  max_x% = INT(proj_x!)
+  IF min_x% > max_x% THEN
+    ' Swap if moving left
+    min_x% = INT(proj_x!)
+    max_x% = INT(proj_prev_x!)
+  ENDIF
+
+  ' Check each x position along the path
+  FOR check_x% = min_x% TO max_x%
+    IF check_x% >= 1 AND check_x% <= SCREEN_W% THEN
+      ' Calculate interpolated y position at this x
+      IF ABS(proj_x! - proj_prev_x!) > 0.1 THEN
+        t! = (check_x% - proj_prev_x!) / (proj_x! - proj_prev_x!)
+        interp_y! = proj_prev_y! + t! * (proj_y! - proj_prev_y!)
+      ELSE
+        interp_y! = proj_y!
+      ENDIF
+
+      ' Check if interpolated position is at or below terrain
+      IF interp_y! >= terrain%(check_x%) THEN
+        ' Collision detected!
+        proj_active% = 0
+        hit% = 0
+
+        ' Use actual current position for hit detection
+        px% = INT(proj_x!)
+        py% = INT(proj_y!)
       
       ' Check P1 hit - within 10 pixel width
       IF ABS(proj_x! - p1_x%) <= 10 AND ABS(proj_y! - p1_y%) <= 15 THEN
@@ -331,11 +371,14 @@ SUB UpdateProjectile
         RedrawAll
       ENDIF
       
-      ' Switch turn (hit or miss)
-      SwitchTurn
-      EXIT SUB
+        ' Switch turn only if it's my turn (avoid race condition)
+        IF currentPlayer% = myPlayer% THEN
+          SwitchTurn
+        ENDIF
+        EXIT SUB
+      ENDIF
     ENDIF
-  ENDIF
+  NEXT check_x%
 END SUB
 
 ' === SUB: Show hit ===
@@ -467,6 +510,9 @@ SUB OnUDP
   
   IF t$ = "YOURTURN" THEN
     ' Peer says it's my turn now
+    ' Force end any active projectile
+    proj_active% = 0
+
     currentPlayer% = myPlayer%
 
     ' Restore my player's settings

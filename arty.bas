@@ -44,6 +44,7 @@ DIM p2_score% = 0
 DIM currentPlayer% = 1
 DIM angle% = 46
 DIM power% = 50
+DIM prev_angle% = 46
 
 ' Per-player settings
 DIM p1_angle% = 46
@@ -156,6 +157,24 @@ SUB DrawTerrain
   FOR x% = 1 TO SCREEN_W% - 1
     LINE x%, terrain%(x%), x%+1, terrain%(x%+1), 1, LINE_COLOR%
   NEXT x%
+END SUB
+
+' === SUB: Draw just the barrel ===
+SUB DrawBarrel(x%, y%, barrel_angle%, col%)
+  LOCAL barrel_len% = 15
+  LOCAL angle_rad!, bx%, by%
+
+  angle_rad! = barrel_angle% * 3.14159 / 180.0
+
+  IF myPlayer% = 1 THEN
+    bx% = x% + INT(barrel_len% * COS(angle_rad!))
+    by% = y% - INT(barrel_len% * SIN(angle_rad!))
+  ELSE
+    bx% = x% - INT(barrel_len% * COS(angle_rad!))
+    by% = y% - INT(barrel_len% * SIN(angle_rad!))
+  ENDIF
+
+  LINE x%, y% - 5, bx%, by%, 2, col%
 END SUB
 
 ' === SUB: Draw cannon ===
@@ -414,6 +433,9 @@ SUB SwitchTurn
     power% = p2_power%
   ENDIF
 
+  ' Update prev_angle to match current angle
+  prev_angle% = angle%
+
   ' Tell peer it's their turn now
   IF peer$ <> "" THEN
     WEB UDP SEND peer$, PORT%, "YOURTURN"
@@ -524,6 +546,9 @@ SUB OnUDP
       power% = p2_power%
     ENDIF
 
+    ' Update prev_angle to match current angle
+    prev_angle% = angle%
+
     ' Redraw all to clear projectile trails
     RedrawAll
     EXIT SUB
@@ -633,23 +658,63 @@ DO
   
   IF k$ <> "" AND myPlayer% = currentPlayer% THEN
     SELECT CASE ASC(k$)
-      CASE 130
-        angle% = angle% - ANGLE_STEP%
-        IF angle% < 0 THEN angle% = 0
-        BOX 0, 0, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
+      CASE 130  ' Left arrow
+        ' Erase old barrel in black
+        IF myPlayer% = 1 THEN
+          DrawBarrel p1_x%, p1_y%, prev_angle%, BG_COLOR%
+        ELSE
+          DrawBarrel p2_x%, p2_y%, prev_angle%, BG_COLOR%
+        ENDIF
+
+        ' Update angle
+        prev_angle% = angle%
+        IF myPlayer% = 1 THEN
+          angle% = angle% + ANGLE_STEP%
+          IF angle% > 90 THEN angle% = 90
+        ELSE
+          angle% = angle% - ANGLE_STEP%
+          IF angle% < 0 THEN angle% = 0
+        ENDIF
+
+        ' Draw new barrel in player color
+        IF myPlayer% = 1 THEN
+          DrawBarrel p1_x%, p1_y%, angle%, P1_COLOR%
+        ELSE
+          DrawBarrel p2_x%, p2_y%, angle%, P2_COLOR%
+        ENDIF
+
+        ' Update HUD only
         BOX 0, 210, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
         DrawHUD
-        DrawCannon p1_x%, p1_y%, P1_COLOR%
-        DrawCannon p2_x%, p2_y%, P2_COLOR%
-        
-      CASE 131
-        angle% = angle% + ANGLE_STEP%
-        IF angle% > 90 THEN angle% = 90
-        BOX 0, 0, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
+
+      CASE 131  ' Right arrow
+        ' Erase old barrel in black
+        IF myPlayer% = 1 THEN
+          DrawBarrel p1_x%, p1_y%, prev_angle%, BG_COLOR%
+        ELSE
+          DrawBarrel p2_x%, p2_y%, prev_angle%, BG_COLOR%
+        ENDIF
+
+        ' Update angle
+        prev_angle% = angle%
+        IF myPlayer% = 1 THEN
+          angle% = angle% - ANGLE_STEP%
+          IF angle% < 0 THEN angle% = 0
+        ELSE
+          angle% = angle% + ANGLE_STEP%
+          IF angle% > 90 THEN angle% = 90
+        ENDIF
+
+        ' Draw new barrel in player color
+        IF myPlayer% = 1 THEN
+          DrawBarrel p1_x%, p1_y%, angle%, P1_COLOR%
+        ELSE
+          DrawBarrel p2_x%, p2_y%, angle%, P2_COLOR%
+        ENDIF
+
+        ' Update HUD only
         BOX 0, 210, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
         DrawHUD
-        DrawCannon p1_x%, p1_y%, P1_COLOR%
-        DrawCannon p2_x%, p2_y%, P2_COLOR%
         
       CASE 128
         power% = power% + POWER_STEP%

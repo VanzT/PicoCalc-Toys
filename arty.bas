@@ -9,6 +9,7 @@ CONST PORT% = 6000
 CONST SCREEN_W% = 320
 CONST SCREEN_H% = 240
 CONST GROUND_Y% = 200
+CONST LEDCOUNT% = 8
 
 ' Colors
 CONST BG_COLOR% = RGB(0,0,0)
@@ -73,9 +74,71 @@ DIM pendingSeed% = 0
 DIM rngState% = 0
 DIM rngValue! = 0.0
 
+' LED effects
+DIM ledBuffer%(LEDCOUNT%)
+DIM ledFadeActive% = 0
+
 ' === SUB: Send Hello ===
 SUB SendHello
   WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
+END SUB
+
+' === SUB: Set all LEDs to a color ===
+SUB SetLEDs(red%, green%, blue%)
+  LOCAL i%
+  FOR i% = 1 TO LEDCOUNT%
+    ' Pack as GRB: (G * &H10000) + (R * &H100) + B
+    ledBuffer%(i%) = (green% * &H10000) + (red% * &H100) + blue%
+  NEXT i%
+  BITBANG WS2812 O, GP28, LEDCOUNT%, ledBuffer%()
+END SUB
+
+' === SUB: Trigger cannon fire effects ===
+SUB CannonFireEffects
+  ' Flash screen white for 50ms
+  BOX 0, 0, SCREEN_W%, SCREEN_H%, 1, RGB(255,255,255), RGB(255,255,255)
+  PAUSE 50
+
+  ' Set LEDs to white and mark fade as active
+  SetLEDs 255, 255, 255
+  ledFadeActive% = 1
+
+  ' Redraw game (screen returns to normal immediately)
+  RedrawAll
+END SUB
+
+' === SUB: Update LED fade (call from main loop) ===
+SUB UpdateLEDFade
+  LOCAL brightness%, fadeTime!
+  STATIC fadeStart! = 0
+  STATIC lastActive% = 0
+
+  IF ledFadeActive% = 0 THEN
+    fadeStart! = 0
+    lastActive% = 0
+    EXIT SUB
+  ENDIF
+
+  ' Reset timer if this is a new fade (ledFadeActive just became 1)
+  IF lastActive% = 0 THEN
+    fadeStart! = TIMER
+    lastActive% = 1
+  ENDIF
+
+  fadeTime! = TIMER - fadeStart!
+
+  ' Fade linearly over 1 second
+  IF fadeTime! >= 1.0 THEN
+    ' Fade complete - turn off LEDs
+    SetLEDs 0, 0, 0
+    ledFadeActive% = 0
+  ELSE
+    ' Linear fade: brightness decreases at constant rate
+    brightness% = INT(255.0 * (1.0 - fadeTime!))
+    IF brightness% < 0 THEN brightness% = 0
+    IF brightness% > 255 THEN brightness% = 255
+    SetLEDs brightness%, brightness%, brightness%
+  ENDIF
 END SUB
 
 ' === SUB: Seed custom RNG ===
@@ -233,10 +296,15 @@ END SUB
 ' === SUB: Fire ===
 SUB FireProjectile
   LOCAL angle_rad!, v0!
-  
+
+  ' Trigger visual effects only if this is my turn (I'm firing)
+  IF currentPlayer% = myPlayer% THEN
+    CannonFireEffects
+  ENDIF
+
   v0! = power% / 8.0
   angle_rad! = angle% * 3.14159 / 180.0
-  
+
   IF currentPlayer% = 1 THEN
     proj_x! = p1_x%
     proj_y! = p1_y% - 10
@@ -588,6 +656,9 @@ END SUB
 
 RANDOMIZE TIMER
 
+' Initialize LEDs to off
+SetLEDs 0, 0, 0
+
 WEB UDP OPEN SERVER PORT PORT%
 WEB UDP INTERRUPT OnUDP
 PAUSE 500
@@ -742,6 +813,9 @@ DO
         ENDIF
     END SELECT
   ENDIF
-  
+
+  ' Update LED fade effect
+  UpdateLEDFade
+
   PAUSE 20
 LOOP

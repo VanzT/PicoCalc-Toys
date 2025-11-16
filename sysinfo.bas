@@ -121,6 +121,11 @@ COLOUR COL_FG, COL_BG
 BOX 0,0,MM.HRES,MM.VRES,1,COL_FG
 BOX 2,2,MM.HRES-4,MM.VRES-4,1,COL_GRID
 
+' ---------- show "Please wait..." message ----------
+DIM msg_x%, msg_y%
+msg_x% = (MM.HRES - LEN("Please wait...") * MM.FONTWIDTH) / 2
+msg_y% = (MM.VRES - MM.FONTHEIGHT) / 2
+PRINT @(msg_x%, msg_y%); "Please wait..."
 
 ' ---------- gather values ----------
 DIM id$, plat$, ip$, wifi$, tcp$, cpus$
@@ -142,6 +147,10 @@ bootcnt% = MM.INFO(BOOT COUNT)
 uptime!  = MM.INFO(UPTIME)        ' seconds (float)
 disksz!  = MM.INFO(DISK SIZE)     ' bytes (float ok)
 freespc! = MM.INFO(FREE SPACE)    ' bytes (float ok)
+
+' ---------- clear "Please wait..." message ----------
+' Overwrite with background color
+PRINT @(msg_x%, msg_y%); SPACE$(LEN("Please wait..."))
 
 ' ---------- render ----------
 DIM y%: y% = PAD + 6

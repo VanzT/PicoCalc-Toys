@@ -238,12 +238,12 @@ SUB GenerateTerrain(seed%)
     ELSE
       IF x% = 1 THEN
         GetRND
-        h% = GROUND_Y% - 20 - INT(rngValue! * 30)
+        h% = GROUND_Y% - 20 - INT(rngValue! * 70)
       ELSE
         GetRND
         variation% = INT(rngValue! * 20) - 10
         h% = terrain%(x%-1) + variation%
-        IF h% < GROUND_Y% - 60 THEN h% = GROUND_Y% - 60
+        IF h% < GROUND_Y% - 100 THEN h% = GROUND_Y% - 100
         IF h% > GROUND_Y% - 10 THEN h% = GROUND_Y% - 10
       ENDIF
     ENDIF

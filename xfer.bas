@@ -1,829 +1,816 @@
-' Artillery Wi-Fi Multiplayer (PicoCalc)
-' Version: 2.1
-
-OPTION BASE 1
+' ===========================================================================
+' PicoCalc UDP Discovery + File Transfer (stop-and-wait, hex-encoded)
+' One program runs on both devices. Either side can send or receive.
+' ===========================================================================
 OPTION EXPLICIT
+OPTION BASE 1
 
-' === Constants ===
-CONST PORT% = 6000
-CONST SCREEN_W% = 320
-CONST SCREEN_H% = 240
-CONST GROUND_Y% = 200
-CONST LEDCOUNT% = 8
+' -------------------- configuration --------------------
+CONST UDP_DISC_PORT%   = 6000           ' discovery + protocol port
+CONST HELLO_REPEAT_CT% = 6
+CONST HELLO_INTERVAL_MS% = 300
+CONST QUEUE_MAX%       = 16
+CONST CHUNK_BYTES%     = 100            ' raw bytes pre-hex; 512 -> 1024 hex chars
+CONST SEND_RETRY_MAX%  = 10
+CONST ACK_TIMEOUT_MS%  = 1200           ' per-chunk wait before retry
+CONST GLOBAL_POLL_MS%  = 10
+CONST MIN_MENU_REDRAW_MS% = 250  ' debounce window for redraws
 
-' Colors
-CONST BG_COLOR% = RGB(0,0,0)
-CONST LINE_COLOR% = RGB(255,255,255)
-CONST P1_COLOR% = RGB(0,255,0)
-CONST P2_COLOR% = RGB(255,0,0)
-CONST PROJ_COLOR% = RGB(255,255,0)
-CONST TEXT_COLOR% = RGB(255,255,255)
+' -------------------- LED configuration --------------------
+CONST LED_COUNT% = 8
+CONST LED_GPIO%  = 28
+CONST LED_FLASH_MS% = 0        ' duration of each flash
 
-' Physics
-CONST GRAVITY! = 0.3
-CONST MAX_POWER% = 100
-CONST MIN_POWER% = 2
-CONST ANGLE_STEP% = 2
-CONST POWER_STEP% = 2
 
-' === Globals ===
-DIM myPlayer% = 0
-DIM peer$ = ""
-DIM assigned% = 0
-DIM myTicket%
-DIM lastHello! = -1
+' -------------------- globals (system/network) --------------------
+DIM g_udp_opened%
+DIM g_key$
+DIM g_last_hello!
+DIM g_peer_known%
+DIM g_my_ip$
+DIM g_broadcast_ip$
+DIM g_device_name$
 
-' Terrain
-DIM terrain%(SCREEN_W%)
-DIM terrainSeed% = 0
-DIM p1_x%, p1_y%
-DIM p2_x%, p2_y%
+' -------------------- inbound message queue (ISR -> main) --------------------
+DIM q_cmd$(QUEUE_MAX%), q_arg$(QUEUE_MAX%), q_ip$(QUEUE_MAX%)
+DIM q_head%, q_tail%
 
-' Game state
-DIM p1_score% = 0
-DIM p2_score% = 0
-DIM currentPlayer% = 1
-DIM angle% = 46
-DIM power% = 50
-DIM prev_angle% = 46
 
-' Per-player settings
-DIM p1_angle% = 46
-DIM p1_power% = 50
-DIM p2_angle% = 46
-DIM p2_power% = 50
+' -------------------- deferred actions requested by main --------------------
+DIM pending_reply_needed%
+DIM pending_reply_ip$, pending_reply_name$
 
-' Projectile
-DIM proj_active% = 0
-DIM proj_x!, proj_y!
-DIM proj_vx!, proj_vy!
-DIM proj_prev_x!, proj_prev_y!
+' -------------------- peer book-keeping --------------------
+DIM g_peer_ip$, g_peer_name$
 
-' Wind
-DIM wind! = 0.0
+' -------------------- sender state --------------------
+DIM s_active%                      ' 0 idle, 1 sending
+DIM s_file_name_full$
+DIM s_file_basename$
+DIM s_file_size%
+DIM s_file_handle%
+DIM s_total_chunks%
+DIM s_next_seq%
+DIM s_sent_sum%                   ' 16-bit rolling sum
+DIM s_retry_count%
+DIM s_waiting_ack_seq%
+DIM s_last_send_ts!
 
-DIM lastMessage$ = ""
+' -------------------- receiver state --------------------
+DIM r_active%
+DIM r_expect_name$
+DIM r_file_handle%
+DIM r_target_path$
+DIM r_total_size%
+DIM r_recv_sum%
+DIM r_expected_seq%
+DIM r_total_chunks_announced%
+DIM r_start_time!
 
-' Seed acknowledgment tracking
-DIM seedAck% = 1
-DIM seedSentTime! = 0
-DIM seedRetryCount% = 0
-DIM pendingSeed% = 0
+DIM msg_cmd$, msg_arg$, msg_ip$
+DIM work_file_size%, work_sum16%
+DIM work_chunk$
 
-' Custom RNG state for deterministic terrain generation
-DIM rngState% = 0
-DIM rngValue! = 0.0
+DIM l1$, l2$, l3$
+DIM g_last_menu_draw_ms!         ' last time we drew the menu (ms)
 
-' LED effects
-DIM ledBuffer%(LEDCOUNT%)
-DIM ledFadeActive% = 0
+DIM g_connected%          ' 0=not confirmed, 1=confirmed with a peer
+DIM g_status$             ' one-line status shown on the menu
+DIM g_menu_dirty%         ' 1 when the menu needs a redraw
+DIM g_last_peer_str$      ' "ip name" cache for the menu
+DIM g_debug_silent%       ' 1 = suppress debug prints during transfer
+g_debug_silent% = 1
 
-' === SUB: Send Hello ===
-SUB SendHello
-  WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
+' -------------------- LED state --------------------
+DIM led_buf%(LED_COUNT%)       ' LED color buffer (1-based due to OPTION BASE 1)
+DIM led_last_flash!            ' timestamp of last LED flash
+
+
+' ===========================================================================
+'                              UTIL FUNCTIONS
+' ===========================================================================
+FUNCTION ExtractIP$(addr$)
+  LOCAL p%
+  p% = INSTR(addr$, ":")
+  IF p% = 0 THEN ExtractIP$ = addr$ ELSE ExtractIP$ = LEFT$(addr$, p% - 1)
+END FUNCTION
+
+FUNCTION DeviceName$()
+  ' Derive a quick-unique suffix from TIMER; change to taste if you have a true ID
+  LOCAL t%, hexid$
+  t% = TIMER
+  hexid$ = RIGHT$("0000" + HEX$(t% AND &HFFFF), 4)
+  DeviceName$ = "PicoCalc-" + hexid$
+END FUNCTION
+
+FUNCTION GetMyIP$()
+  LOCAL ip$
+  ON ERROR SKIP 1
+  ip$ = MM.INFO$(IP ADDRESS)
+  ON ERROR ABORT
+  IF INSTR(ip$, ".") = 0 THEN ip$ = ""
+  GetMyIP$ = ip$
+END FUNCTION
+
+FUNCTION SubnetBroadcast$(ip$)
+  LOCAL p1%, p2%, p3%, a$, b$, c$
+  p1% = INSTR(ip$, ".") : IF p1% = 0 THEN SubnetBroadcast$ = "" : EXIT FUNCTION
+  p2% = INSTR(p1% + 1, ip$, ".") : IF p2% = 0 THEN SubnetBroadcast$ = "" : EXIT FUNCTION
+  p3% = INSTR(p2% + 1, ip$, ".") : IF p3% = 0 THEN SubnetBroadcast$ = "" : EXIT FUNCTION
+  a$ = LEFT$(ip$, p1% - 1)
+  b$ = MID$(ip$, p1% + 1, p2% - p1% - 1)
+  c$ = MID$(ip$, p2% + 1, p3% - p2% - 1)
+  SubnetBroadcast$ = a$ + "." + b$ + "." + c$ + ".255"
+END FUNCTION
+
+FUNCTION FileBaseName$(full$)
+  LOCAL pathNorm$, p%, lastSlashPos%
+
+  ' normalize backslashes to forward slashes without REPLACE$
+  pathNorm$ = full$
+  DO WHILE INSTR(pathNorm$, "\") <> 0
+    p% = INSTR(pathNorm$, "\")
+    pathNorm$ = LEFT$(pathNorm$, p% - 1) + "/" + MID$(pathNorm$, p% + 1)
+  LOOP
+
+  ' find last slash using forward scan (no reverse INSTR in some builds)
+  lastSlashPos% = 0
+  DO
+    p% = INSTR(lastSlashPos% + 1, pathNorm$, "/")
+    IF p% = 0 THEN EXIT DO
+    lastSlashPos% = p%
+  LOOP
+
+  IF lastSlashPos% = 0 THEN
+    FileBaseName$ = pathNorm$
+  ELSE
+    FileBaseName$ = MID$(pathNorm$, lastSlashPos% + 1)
+  ENDIF
+END FUNCTION
+
+
+FUNCTION FileExists%(path$)
+  FileExists% = MM.INFO(EXISTS FILE path$)
+END FUNCTION
+
+FUNCTION Min%(a%, b%)
+  IF a% < b% THEN Min% = a% ELSE Min% = b%
+END FUNCTION
+
+FUNCTION Hexify$(bin$)
+  ' convert each byte in bin$ to two hex chars
+  LOCAL i%, h$, ch%
+  h$ = ""
+  FOR i% = 1 TO LEN(bin$)
+    ch% = ASC(MID$(bin$, i%, 1))
+    h$ = h$ + RIGHT$("0" + HEX$(ch%), 2)
+  NEXT
+  Hexify$ = h$
+END FUNCTION
+
+FUNCTION Dehexify$(hx$)
+  ' convert two-hex-digit pairs back to bytes
+  LOCAL i%, out1$, pair$, v%
+  out1$ = ""
+  IF (LEN(hx$) MOD 2) <> 0 THEN
+    Dehexify$ = out1$
+    EXIT FUNCTION
+  ENDIF
+  FOR i% = 1 TO LEN(hx$) STEP 2
+    pair$ = MID$(hx$, i%, 2)
+    v% = VAL("&H" + pair$)
+    out1$ = out1$ + CHR$(v%)
+  NEXT
+  Dehexify$ = out1$
+END FUNCTION
+
+FUNCTION Sum16%(bin$)
+  ' simple 16-bit rolling sum of bytes
+  LOCAL i%, s%, ch%
+  s% = 0
+  FOR i% = 1 TO LEN(bin$)
+    ch% = ASC(MID$(bin$, i%, 1))
+    s% = (s% + ch%) AND &HFFFF
+  NEXT
+  Sum16% = s%
+END FUNCTION
+
+FUNCTION LeftOf$(s$, delim$)
+  LOCAL p%
+  p% = INSTR(s$, delim$)
+  IF p% = 0 THEN
+    LeftOf$ = s$
+  ELSE
+    LeftOf$ = LEFT$(s$, p% - 1)
+  ENDIF
+END FUNCTION
+
+FUNCTION MidAfter$(s$, delim$)
+  LOCAL p%
+  p% = INSTR(s$, delim$)
+  IF p% = 0 THEN
+    MidAfter$ = ""
+  ELSE
+    MidAfter$ = MID$(s$, p% + LEN(delim$))
+  ENDIF
+END FUNCTION
+
+' ===========================================================================
+'                              UDP / QUEUE
+' ===========================================================================
+SUB OpenUDP()
+  IF g_udp_opened% THEN EXIT SUB
+  ON ERROR SKIP 1 : WEB UDP CLOSE
+  WEB UDP OPEN SERVER PORT UDP_DISC_PORT%
+  WEB UDP INTERRUPT UdpISR
+  g_udp_opened% = 1
 END SUB
 
-' === SUB: Set all LEDs to a color ===
-SUB SetLEDs(red%, green%, blue%)
+SUB UdpSend(ip$, payload$)
+  WEB UDP SEND ip$, UDP_DISC_PORT%, payload$
+END SUB
+
+SUB EnqueueMessage(cmd$, arg$, ip$)
+  LOCAL nxt%
+  nxt% = (q_tail% MOD QUEUE_MAX%) + 1
+  ' simple drop-if-full
+  IF nxt% = q_head% THEN EXIT SUB
+  q_cmd$(q_tail%) = cmd$
+  q_arg$(q_tail%) = arg$
+  q_ip$(q_tail%)  = ip$
+  q_tail% = nxt%
+END SUB
+
+FUNCTION QueueHasItem%()
+  QueueHasItem% = (q_head% <> q_tail%)
+END FUNCTION
+
+SUB DequeueMessage(cmd$, arg$, ip$)
+  IF q_head% = q_tail% THEN
+    cmd$ = "" : arg$ = "" : ip$ = ""
+    EXIT SUB
+  ENDIF
+  cmd$ = q_cmd$(q_head%)
+  arg$ = q_arg$(q_head%)
+  ip$  = q_ip$(q_head%)
+  q_head% = (q_head% MOD QUEUE_MAX%) + 1
+END SUB
+
+' -------------------- Interrupt: decode + enqueue only --------------------
+SUB UdpISR
+  LOCAL raw$, src$, bar%, c$, a$
+  raw$ = MM.MESSAGE$
+  src$ = ExtractIP$(MM.ADDRESS$)
+  bar% = INSTR(raw$, "|")
+  IF bar% = 0 THEN
+    c$ = raw$ : a$ = ""
+  ELSE
+    c$ = LEFT$(raw$, bar% - 1)
+    a$ = MID$(raw$, bar% + 1)
+  ENDIF
+  EnqueueMessage c$, a$, src$
+END SUB
+
+' ===========================================================================
+'                       PROTOCOL: HIGH-LEVEL SENDERS
+' ===========================================================================
+SUB BroadcastHello()
   LOCAL i%
-  FOR i% = 1 TO LEDCOUNT%
-    ' Pack as GRB: (G * &H10000) + (R * &H100) + B
-    ledBuffer%(i%) = (green% * &H10000) + (red% * &H100) + blue%
-  NEXT i%
-  BITBANG WS2812 O, GP28, LEDCOUNT%, ledBuffer%()
+  'PRINT "Broadcasting HELLO..."
+  FOR i% = 1 TO HELLO_REPEAT_CT%
+    UdpSend "255.255.255.255", "HELLO|" + g_device_name$
+    PAUSE HELLO_INTERVAL_MS%
+  NEXT
+  g_last_hello! = TIMER
+  'PRINT "Done."
 END SUB
 
-' === SUB: Trigger cannon fire effects ===
-SUB CannonFireEffects
-  ' Flash screen white for 50ms
-  BOX 0, 0, SCREEN_W%, SCREEN_H%, 1, RGB(255,255,255), RGB(255,255,255)
-  PAUSE 50
-
-  ' Set LEDs to white and mark fade as active
-  SetLEDs 255, 255, 255
-  ledFadeActive% = 1
-
-  ' Redraw game (screen returns to normal immediately)
-  RedrawAll
+SUB AnnouncePeer(ip$)
+  pending_reply_ip$ = ip$
+  pending_reply_name$ = g_device_name$
+  pending_reply_needed% = 1
 END SUB
 
-' === SUB: Update LED fade (call from main loop) ===
-SUB UpdateLEDFade
-  LOCAL brightness%, fadeTime!
-  STATIC fadeStart! = 0
-  STATIC lastActive% = 0
-  STATIC lastUpdate! = 0
-
-  IF ledFadeActive% = 0 THEN
-    fadeStart! = 0
-    lastActive% = 0
-    lastUpdate! = 0
+SUB SendFileOffer(peer_ip$, full_path$)
+  LOCAL fsz%, fh%, sum%, base$
+  IF FileExists%(full_path$) = 0 THEN
+    PRINT "No such file: "; full_path$
     EXIT SUB
   ENDIF
 
-  ' Reset timer if this is a new fade (ledFadeActive just became 1)
-  IF lastActive% = 0 THEN
-    fadeStart! = TIMER
-    lastUpdate! = TIMER
-    lastActive% = 1
-  ENDIF
+  base$ = FileBaseName$(full_path$)
 
-  ' Only update LEDs every 50ms for smoother visible fade
-  IF (TIMER - lastUpdate!) < 0.05 THEN EXIT SUB
-  lastUpdate! = TIMER
+  ' compute size + sum
+  OPEN full_path$ FOR INPUT AS #1
+  fsz% = LOF(#1)
+  sum% = 0
+  LOCAL chunk$
+  DO WHILE EOF(#1) = 0
+    chunk$ = INPUT$(255, #1)
+    sum% = (sum% + Sum16%(chunk$)) AND &HFFFF
+  LOOP
+  CLOSE #1
 
-  fadeTime! = TIMER - fadeStart!
-
-  ' Fade linearly over 1 second
-  IF fadeTime! >= 1.0 THEN
-    ' Fade complete - turn off LEDs
-    SetLEDs 0, 0, 0
-    ledFadeActive% = 0
-  ELSE
-    ' Linear fade: brightness decreases at constant rate
-    brightness% = INT(255.0 * (1.0 - fadeTime!))
-    IF brightness% < 0 THEN brightness% = 0
-    IF brightness% > 255 THEN brightness% = 255
-    SetLEDs brightness%, brightness%, brightness%
-  ENDIF
+  UdpSend peer_ip$, "FILE_OFFER|" + base$ + "|" + STR$(fsz%) + "|" + STR$(sum%)
+  PRINT "Offered "; base$; " ("; fsz%; " bytes, sum="; HEX$(sum%); ") to "; peer_ip$
 END SUB
 
-' === SUB: Seed custom RNG ===
-SUB SeedRNG(seed%)
-  rngState% = seed%
-  IF rngState% <= 0 THEN rngState% = 1
+SUB StartSending(peer_ip$, full_path$, base$, fsz%, sum16%)
+  ' setup sender state and send first chunk
+  s_active% = 1
+  s_file_name_full$ = full_path$
+  s_file_basename$ = base$
+  s_file_size% = fsz%
+  s_sent_sum% = 0
+  s_next_seq% = 1
+  s_waiting_ack_seq% = 1
+  s_retry_count% = 0
+  s_total_chunks% = (fsz% + CHUNK_BYTES% - 1) \ CHUNK_BYTES%
+  OPEN s_file_name_full$ FOR INPUT AS #9
+  PRINT "Sending "; base$; " in "; s_total_chunks%; " chunk(s)..."
+  ' immediately push first chunk
+  SendNextChunk peer_ip$
 END SUB
 
-' === SUB: Get deterministic random number (0.0 to 1.0) ===
-SUB GetRND
-  ' Linear Congruential Generator: (a * x + c) mod m
-  ' Using parameters from Numerical Recipes
-  rngState% = (1103515245 * rngState% + 12345) AND &H7FFFFFFF
-  rngValue! = rngState% / 2147483647.0
-END SUB
+SUB SendNextChunk(peer_ip$)
+  LOCAL remainingBytes%, takeBytes%, rawChunk$, hexChunk$, packet$
 
-' === SUB: Generate terrain from seed ===
-SUB GenerateTerrain(seed%)
-  LOCAL i%, x%, h%, variation%
-
-  ' Use custom RNG to generate identical terrain on both devices
-  SeedRNG seed%
-
-  ' Generate cannon positions from seed
-  GetRND
-  p1_x% = 40 + INT(rngValue! * 40)
-  GetRND
-  p2_x% = SCREEN_W% - 80 + INT(rngValue! * 40)
-
-  IF p2_x% - p1_x% < SCREEN_W% \ 3 THEN
-    p2_x% = p1_x% + SCREEN_W% \ 3 + 20
-  ENDIF
-
-  ' Generate wind from seed
-  GetRND
-  wind! = (rngValue! - 0.5) * 0.6
-
-  ' Generate terrain
-  FOR x% = 1 TO SCREEN_W%
-    IF ABS(x% - p1_x%) < 10 OR ABS(x% - p2_x%) < 10 THEN
-      IF x% = 1 THEN
-        h% = GROUND_Y% - 30
-      ELSE
-        h% = terrain%(x%-1)
-      ENDIF
-    ELSE
-      IF x% = 1 THEN
-        GetRND
-        h% = GROUND_Y% - 20 - INT(rngValue! * 30)
-      ELSE
-        GetRND
-        variation% = INT(rngValue! * 20) - 10
-        h% = terrain%(x%-1) + variation%
-        IF h% < GROUND_Y% - 60 THEN h% = GROUND_Y% - 60
-        IF h% > GROUND_Y% - 10 THEN h% = GROUND_Y% - 10
-      ENDIF
-    ENDIF
-    terrain%(x%) = h%
-  NEXT x%
-  
-  ' Smooth terrain
-  FOR i% = 1 TO 2
-    FOR x% = 2 TO SCREEN_W% - 1
-      IF ABS(x% - p1_x%) < 10 OR ABS(x% - p2_x%) < 10 THEN
-        ' Keep flat
-      ELSE
-        terrain%(x%) = (terrain%(x%-1) + terrain%(x%) + terrain%(x%+1)) \ 3
-      ENDIF
-    NEXT x%
-  NEXT i%
-  
-  p1_y% = terrain%(p1_x%)
-  p2_y% = terrain%(p2_x%)
-END SUB
-
-' === SUB: Draw terrain ===
-SUB DrawTerrain
-  LOCAL x%
-  FOR x% = 1 TO SCREEN_W% - 1
-    LINE x%, terrain%(x%), x%+1, terrain%(x%+1), 1, LINE_COLOR%
-  NEXT x%
-END SUB
-
-' === SUB: Draw just the barrel ===
-SUB DrawBarrel(x%, y%, barrel_angle%, col%)
-  LOCAL barrel_len% = 15
-  LOCAL angle_rad!, bx%, by%
-
-  angle_rad! = barrel_angle% * 3.14159 / 180.0
-
-  IF myPlayer% = 1 THEN
-    bx% = x% + INT(barrel_len% * COS(angle_rad!))
-    by% = y% - INT(barrel_len% * SIN(angle_rad!))
-  ELSE
-    bx% = x% - INT(barrel_len% * COS(angle_rad!))
-    by% = y% - INT(barrel_len% * SIN(angle_rad!))
-  ENDIF
-
-  LINE x%, y% - 5, bx%, by%, 2, col%
-END SUB
-
-' === SUB: Draw cannon ===
-SUB DrawCannon(x%, y%, col%)
-  LOCAL barrel_len% = 15
-  LOCAL angle_rad!, x1%, y1%, x2%, y2%, x3%, y3%, bx%, by%
-  
-  x1% = x% - 8 : y1% = y%
-  x2% = x% + 8 : y2% = y%
-  x3% = x% : y3% = y% - 10
-  
-  LINE x1%, y1%, x2%, y2%, 1, col%
-  LINE x2%, y2%, x3%, y3%, 1, col%
-  LINE x3%, y3%, x1%, y1%, 1, col%
-  
-  IF (myPlayer% = 1 AND x% = p1_x%) OR (myPlayer% = 2 AND x% = p2_x%) THEN
-    angle_rad! = angle% * 3.14159 / 180.0
-    IF myPlayer% = 1 THEN
-      bx% = x% + INT(barrel_len% * COS(angle_rad!))
-      by% = y% - INT(barrel_len% * SIN(angle_rad!))
-    ELSE
-      bx% = x% - INT(barrel_len% * COS(angle_rad!))
-      by% = y% - INT(barrel_len% * SIN(angle_rad!))
-    ENDIF
-    LINE x%, y% - 5, bx%, by%, 2, col%
-  ENDIF
-END SUB
-
-' === SUB: Draw HUD ===
-SUB DrawHUD
-  LOCAL windStr$
-
-  COLOR TEXT_COLOR%, BG_COLOR%
-  PRINT @(5, 5) "P1:" + STR$(p1_score%) + " P2:" + STR$(p2_score%)
-
-  IF myPlayer% = currentPlayer% THEN
-    PRINT @(5, 15) "YOUR TURN"
-  ELSE
-    PRINT @(5, 15) "WAIT...  "
-  ENDIF
-
-  IF myPlayer% = currentPlayer% THEN
-    PRINT @(5, 220) "PWR:" + STR$(power%) + " ANG:" + STR$(angle%)
-
-    IF wind! > 0 THEN
-      windStr$ = "WIND:>" + STR$(INT(ABS(wind!) * 10))
-    ELSEIF wind! < 0 THEN
-      windStr$ = "WIND:<" + STR$(INT(ABS(wind!) * 10))
-    ELSE
-      windStr$ = "WIND:0"
-    ENDIF
-    PRINT @(200, 220) windStr$
-  ENDIF
-END SUB
-
-' === SUB: Fire ===
-SUB FireProjectile
-  LOCAL angle_rad!, v0!
-
-  ' Trigger visual effects only if this is my turn (I'm firing)
-  IF currentPlayer% = myPlayer% THEN
-    CannonFireEffects
-  ENDIF
-
-  v0! = power% / 8.0
-  angle_rad! = angle% * 3.14159 / 180.0
-
-  IF currentPlayer% = 1 THEN
-    proj_x! = p1_x%
-    proj_y! = p1_y% - 10
-    proj_vx! = v0! * COS(angle_rad!)
-    proj_vy! = -v0! * SIN(angle_rad!)
-  ELSE
-    proj_x! = p2_x%
-    proj_y! = p2_y% - 10
-    proj_vx! = -v0! * COS(angle_rad!)
-    proj_vy! = -v0! * SIN(angle_rad!)
-  ENDIF
-
-  ' Initialize previous position
-  proj_prev_x! = proj_x!
-  proj_prev_y! = proj_y!
-
-  proj_active% = 1
-END SUB
-
-' === SUB: Update projectile ===
-SUB UpdateProjectile
-  LOCAL hit%, px%, py%, check_x%, t!, interp_x!, interp_y!
-
-  IF proj_active% = 0 THEN EXIT SUB
-
-  ' Store previous position
-  proj_prev_x! = proj_x!
-  proj_prev_y! = proj_y!
-
-  ' Update velocity
-  proj_vy! = proj_vy! + GRAVITY!
-  proj_vx! = proj_vx! + wind! * 0.1
-
-  ' Update position
-  proj_x! = proj_x! + proj_vx!
-  proj_y! = proj_y! + proj_vy!
-  
-  ' Draw trail
-  px% = INT(proj_x!)
-  py% = INT(proj_y!)
-  IF px% >= 0 AND px% <= SCREEN_W% AND py% >= 0 AND py% <= SCREEN_H% THEN
-    PIXEL px%, py%, PROJ_COLOR%
-    PIXEL px%-1, py%, PROJ_COLOR%
-    PIXEL px%+1, py%, PROJ_COLOR%
-    PIXEL px%, py%-1, PROJ_COLOR%
-    PIXEL px%, py%+1, PROJ_COLOR%
-  ENDIF
-  
-  ' Check if too far down
-  IF proj_y! > GROUND_Y% + 20 THEN
-    proj_active% = 0
-    IF currentPlayer% = myPlayer% THEN
-      SwitchTurn
-    ENDIF
+  remainingBytes% = s_file_size% - ((s_next_seq% - 1) * CHUNK_BYTES%)
+  IF remainingBytes% <= 0 THEN
+    UdpSend peer_ip$, "FILE_DONE|" + STR$(s_sent_sum%) + "|" + STR$(s_total_chunks%)
+    PRINT "All chunks sent; waiting for checksum confirm..."
     EXIT SUB
   ENDIF
 
-  ' Check if off screen (outside terrain bounds)
-  IF proj_x! < 0 OR proj_x! > SCREEN_W% + 1 THEN
-    proj_active% = 0
-    IF currentPlayer% = myPlayer% THEN
-      SwitchTurn
-    ENDIF
-    EXIT SUB
-  ENDIF
-  
-  ' Check terrain collision using line segment test
-  ' Sample every x position between previous and current
-  LOCAL min_x%, max_x%, dx!, dy!, step_count%, i%
+  takeBytes% = Min%(CHUNK_BYTES%, remainingBytes%)
+  rawChunk$  = INPUT$(takeBytes%, #9)
+  s_sent_sum% = (s_sent_sum% + Sum16%(rawChunk$)) AND &HFFFF
 
-  min_x% = INT(proj_prev_x!)
-  max_x% = INT(proj_x!)
-  IF min_x% > max_x% THEN
-    ' Swap if moving left
-    min_x% = INT(proj_x!)
-    max_x% = INT(proj_prev_x!)
-  ENDIF
+  hexChunk$  = Hexify$(rawChunk$)
+  packet$    = "FILE_CHUNK|" + STR$(s_next_seq%) + "|" + hexChunk$
+  UdpSend peer_ip$, packet$
 
-  ' Check each x position along the path
-  FOR check_x% = min_x% TO max_x%
-    IF check_x% >= 1 AND check_x% <= SCREEN_W% THEN
-      ' Calculate interpolated y position at this x
-      IF ABS(proj_x! - proj_prev_x!) > 0.1 THEN
-        t! = (check_x% - proj_prev_x!) / (proj_x! - proj_prev_x!)
-        interp_y! = proj_prev_y! + t! * (proj_y! - proj_prev_y!)
-      ELSE
-        interp_y! = proj_y!
-      ENDIF
+  ' Flash LEDs blue for sending
+  LED_Flash 0, 0, 255
 
-      ' Check if interpolated position is at or below terrain
-      IF interp_y! >= terrain%(check_x%) THEN
-        ' Collision detected!
-        proj_active% = 0
-        hit% = 0
-
-        ' Use actual current position for hit detection
-        px% = INT(proj_x!)
-        py% = INT(proj_y!)
-      
-      ' Check P1 hit - within 10 pixel width
-      IF ABS(proj_x! - p1_x%) <= 10 AND ABS(proj_y! - p1_y%) <= 15 THEN
-        hit% = 1
-        IF currentPlayer% = 1 THEN
-          p1_score% = p1_score% + 1
-        ELSE
-          p2_score% = p2_score% + 1
-        ENDIF
-        ShowHitMessage 1
-      ENDIF
-      
-      ' Check P2 hit - within 10 pixel width
-      IF ABS(proj_x! - p2_x%) <= 10 AND ABS(proj_y! - p2_y%) <= 15 THEN
-        hit% = 2
-        IF currentPlayer% = 1 THEN
-          p1_score% = p1_score% + 1
-        ELSE
-          p2_score% = p2_score% + 1
-        ENDIF
-        ShowHitMessage 2
-      ENDIF
-      
-      IF hit% > 0 THEN
-        PAUSE 1500
-        ' Generate new terrain - only shooting player generates seed
-        terrainSeed% = INT(RND * 1000000)
-        GenerateTerrain terrainSeed%
-
-        ' Send terrain seed to peer with acknowledgment
-        IF peer$ <> "" THEN
-          seedAck% = 0
-          pendingSeed% = terrainSeed%
-          seedSentTime! = TIMER
-          seedRetryCount% = 0
-          WEB UDP SEND peer$, PORT%, "NEWSEED " + STR$(terrainSeed%)
-
-          ' Wait for ACK with retry
-          DO WHILE seedAck% = 0 AND seedRetryCount% < 5
-            PAUSE 200
-            IF seedAck% = 0 THEN
-              IF (TIMER - seedSentTime!) > 1 THEN
-                seedRetryCount% = seedRetryCount% + 1
-                WEB UDP SEND peer$, PORT%, "NEWSEED " + STR$(terrainSeed%)
-                seedSentTime! = TIMER
-              ENDIF
-            ENDIF
-          LOOP
-
-          WEB UDP SEND peer$, PORT%, "NEWSCORE " + STR$(p1_score%) + "," + STR$(p2_score%)
-        ENDIF
-
-        RedrawAll
-      ENDIF
-      
-        ' Switch turn only if it's my turn (avoid race condition)
-        IF currentPlayer% = myPlayer% THEN
-          SwitchTurn
-        ENDIF
-        EXIT SUB
-      ENDIF
-    ENDIF
-  NEXT check_x%
+  s_waiting_ack_seq% = s_next_seq%
+  s_last_send_ts!    = TIMER
+  ' advance happens on ack in HandleAck
 END SUB
 
-' === SUB: Show hit ===
-SUB ShowHitMessage(player%)
-  COLOR RGB(255, 255, 0), BG_COLOR%
-  IF player% = 1 THEN
-    PRINT @(100, 100) "PLAYER 1 HIT!"
-  ELSE
-    PRINT @(100, 100) "PLAYER 2 HIT!"
-  ENDIF
+
+SUB HandleAck(peer_ip$, seqnum%)
+  IF s_active% = 0 THEN EXIT SUB
+  IF seqnum% <> s_waiting_ack_seq% THEN EXIT SUB
+  ' good ack; advance
+  s_next_seq% = s_next_seq% + 1
+  s_retry_count% = 0
+  ' next send
+  SendNextChunk peer_ip$
 END SUB
 
-' === SUB: Switch turn ===
-SUB SwitchTurn
-  ' Save current player's settings
-  IF currentPlayer% = 1 THEN
-    p1_angle% = angle%
-    p1_power% = power%
-  ELSE
-    p2_angle% = angle%
-    p2_power% = power%
+SUB MaybeResendChunk(peer_ip$)
+  IF s_active% = 0 THEN EXIT SUB
+  IF (TIMER - s_last_send_ts!) < ACK_TIMEOUT_MS% THEN EXIT SUB
+
+  IF s_retry_count% >= SEND_RETRY_MAX% THEN
+    PRINT "Send failed: too many retries."
+    UdpSend peer_ip$, "FILE_CANCEL|timeout"
+    CLOSE #9
+    s_active% = 0
+    EXIT SUB
   ENDIF
 
-  ' Switch to other player
-  currentPlayer% = 3 - currentPlayer%
+  s_retry_count% = s_retry_count% + 1
+  'PRINT "Resend seq "; s_waiting_ack_seq%; " (attempt "; s_retry_count%; ")"
 
-  ' Restore new player's settings
-  IF currentPlayer% = 1 THEN
-    angle% = p1_angle%
-    power% = p1_power%
-  ELSE
-    angle% = p2_angle%
-    power% = p2_power%
-  ENDIF
+  LOCAL resendPos%, takeBytes%, rawChunk$, hexChunk$
+  resendPos%  = (s_waiting_ack_seq% - 1) * CHUNK_BYTES%
+  SEEK #9, resendPos% + 1
+  takeBytes%  = Min%(CHUNK_BYTES%, s_file_size% - resendPos%)
+  rawChunk$   = INPUT$(takeBytes%, #9)
+  hexChunk$   = Hexify$(rawChunk$)
 
-  ' Update prev_angle to match current angle
-  prev_angle% = angle%
-
-  ' Tell peer it's their turn now
-  IF peer$ <> "" THEN
-    WEB UDP SEND peer$, PORT%, "YOURTURN"
-  ENDIF
-
-  ' Redraw all to clear projectile trails
-  RedrawAll
+  UdpSend peer_ip$, "FILE_CHUNK|" + STR$(s_waiting_ack_seq%) + "|" + hexChunk$
+  s_last_send_ts! = TIMER
 END SUB
 
-' === SUB: Redraw all ===
-SUB RedrawAll
-  CLS BG_COLOR%
-  DrawTerrain
-  DrawCannon p1_x%, p1_y%, P1_COLOR%
-  DrawCannon p2_x%, p2_y%, P2_COLOR%
-  DrawHUD
+
+' ===========================================================================
+'                       PROTOCOL: HIGH-LEVEL RECEIVER
+' ===========================================================================
+SUB HandleFileOffer(from_ip$, arg$)
+  LOCAL nm$, rest$, sz$, su$, size_i%, sum_i%
+
+  nm$ = LeftOf$(arg$, "|")
+  rest$ = MidAfter$(arg$, "|")
+  sz$ = LeftOf$(rest$, "|")
+  su$ = MidAfter$(rest$, "|")
+  size_i% = VAL(sz$)
+  sum_i%  = VAL(su$)
+
+  ' store directly to current drive (assumed B:)
+  r_target_path$ = nm$
+  OPEN r_target_path$ FOR OUTPUT AS #8
+  CLOSE #8
+  OPEN r_target_path$ FOR RANDOM AS #8
+
+  r_active% = 1
+  r_expect_name$ = nm$
+  r_total_size% = size_i%
+  r_recv_sum% = 0
+  r_expected_seq% = 1
+  r_total_chunks_announced% = (size_i% + CHUNK_BYTES% - 1) \ CHUNK_BYTES%
+  r_start_time! = TIMER
+
+  UdpSend from_ip$, "FILE_ACCEPT|" + nm$
+  PRINT "Accepting "; nm$; " ("; size_i%; " bytes, sum="; HEX$(sum_i%); ")"
 END SUB
 
-' === SUB: UDP handler ===
-SUB OnUDP
-  LOCAL t$, src$, comma%, hostPlayer%, startPlayer%, peerTicket%, seed%
-  LOCAL ang%, pwr%
-  
-  t$ = MM.MESSAGE$
-  src$ = MM.ADDRESS$
-  
-  ' === Handshake ===
-  IF assigned% = 0 THEN
-    IF LEFT$(t$,5) = "HELLO" THEN
-      peerTicket% = VAL(MID$(t$, 7))
-      
-      IF peerTicket% = myTicket% THEN
-        myTicket% = INT(RND * 1000000)
-        EXIT SUB
-      ENDIF
-      
-      peer$ = src$
-      
-      IF myTicket% > peerTicket% THEN
-        IF RND > 0.5 THEN hostPlayer% = 1 ELSE hostPlayer% = 2
-        startPlayer% = 1
-        myPlayer% = hostPlayer%
-        currentPlayer% = startPlayer%
-        assigned% = 1
 
-        ' Generate initial terrain
-        terrainSeed% = INT(RND * 1000000)
-        GenerateTerrain terrainSeed%
+SUB HandleChunk(from_ip$, arg$)
+  IF r_active% = 0 THEN EXIT SUB
 
-        ' Send assignment with terrain seed and wait for ACK
-        seedAck% = 0
-        pendingSeed% = terrainSeed%
-        seedSentTime! = TIMER
-        seedRetryCount% = 0
-        WEB UDP SEND peer$, PORT%, "ASSIGN " + STR$(hostPlayer%) + "," + STR$(startPlayer%) + "," + STR$(terrainSeed%)
-      ELSE
-        WEB UDP SEND peer$, PORT%, "HELLO " + STR$(myTicket%)
-      ENDIF
-      EXIT SUB
-    ENDIF
-    
-    IF LEFT$(t$,6) = "ASSIGN" THEN
-      comma% = INSTR(t$, ",")
-      hostPlayer% = VAL(MID$(t$, 8, comma% - 8))
-      t$ = MID$(t$, comma% + 1)
-      comma% = INSTR(t$, ",")
-      startPlayer% = VAL(LEFT$(t$, comma% - 1))
-      terrainSeed% = VAL(MID$(t$, comma% + 1))
+  ' avoid reserved names: POS/HEX$
+  LOCAL seqStr$, payloadHex$, seqIndex%, payloadBin$, writePos%
 
-      myPlayer% = 3 - hostPlayer%
-      currentPlayer% = startPlayer%
-      assigned% = 1
-      peer$ = src$
+  seqStr$     = LeftOf$(arg$, "|")
+  payloadHex$ = MidAfter$(arg$, "|")
+  seqIndex%   = VAL(seqStr$)
 
-      GenerateTerrain terrainSeed%
+  ' stop-and-wait: only accept the exact expected sequence
+  IF seqIndex% <> r_expected_seq% THEN EXIT SUB
 
-      ' Send acknowledgment of terrain seed
-      WEB UDP SEND peer$, PORT%, "SEEDACK " + STR$(terrainSeed%)
-      EXIT SUB
-    ENDIF
-  ENDIF
-  
-  ' === Game messages ===
-  IF LEFT$(t$,4) = "FIRE" THEN
-    comma% = INSTR(t$, ",")
-    ang% = VAL(MID$(t$, 6, comma% - 6))
-    pwr% = VAL(MID$(t$, comma% + 1))
-    
-    angle% = ang%
-    power% = pwr%
-    FireProjectile
-    EXIT SUB
-  ENDIF
-  
-  IF t$ = "YOURTURN" THEN
-    ' Peer says it's my turn now
-    ' Force end any active projectile
-    proj_active% = 0
+  payloadBin$ = Dehexify$(payloadHex$)
+  r_recv_sum% = (r_recv_sum% + Sum16%(payloadBin$)) AND &HFFFF
 
-    currentPlayer% = myPlayer%
+  writePos% = (r_expected_seq% - 1) * CHUNK_BYTES%
+  SEEK #8, writePos% + 1
+  PRINT #8, payloadBin$;         ' no CRLF
 
-    ' Restore my player's settings
-    IF myPlayer% = 1 THEN
-      angle% = p1_angle%
-      power% = p1_power%
-    ELSE
-      angle% = p2_angle%
-      power% = p2_power%
-    ENDIF
+  ' Flash LEDs orange for receiving
+  LED_Flash 255, 165, 0
 
-    ' Update prev_angle to match current angle
-    prev_angle% = angle%
+  ' ack and advance
+  UdpSend from_ip$, "FILE_ACK|" + STR$(seqIndex%)
+  r_expected_seq% = r_expected_seq% + 1
 
-    ' Redraw all to clear projectile trails
-    RedrawAll
-    EXIT SUB
-  ENDIF
-  
-  IF LEFT$(t$,7) = "NEWSEED" THEN
-    seed% = VAL(MID$(t$, 9))
-    terrainSeed% = seed%
-    GenerateTerrain terrainSeed%
-    RedrawAll
-
-    ' Send acknowledgment of terrain seed
-    WEB UDP SEND peer$, PORT%, "SEEDACK " + STR$(terrainSeed%)
-    EXIT SUB
-  ENDIF
-  
-  IF LEFT$(t$,8) = "NEWSCORE" THEN
-    comma% = INSTR(t$, ",")
-    p1_score% = VAL(MID$(t$, 10, comma% - 10))
-    p2_score% = VAL(MID$(t$, comma% + 1))
-    EXIT SUB
-  ENDIF
-
-  IF LEFT$(t$,7) = "SEEDACK" THEN
-    seed% = VAL(MID$(t$, 9))
-    ' Verify ACK matches our pending seed
-    IF seed% = pendingSeed% THEN
-      seedAck% = 1
-    ENDIF
-    EXIT SUB
+  ' if we just wrote the last bytes, we'll verify when FILE_DONE arrives
+  IF writePos% + LEN(payloadBin$) >= r_total_size% THEN
+    ' waiting for FILE_DONE for checksum confirm
   ENDIF
 END SUB
 
-' ========================================
-' === MAIN ===
-' ========================================
 
-RANDOMIZE TIMER
+SUB HandleFileDone(from_ip$, arg$)
+  ' FILE_DONE|sum|total_chunks
+  IF r_active% = 0 THEN EXIT SUB
+  LOCAL su$, tc$, sum_i%, chunks_i%
+  su$ = LeftOf$(arg$, "|")
+  tc$ = MidAfter$(arg$, "|")
+  sum_i% = VAL(su$)
+  chunks_i% = VAL(tc$)
 
-' Initialize LEDs to off
-SetLEDs 0, 0, 0
+  CLOSE #8
+  IF (r_recv_sum% AND &HFFFF) = (sum_i% AND &HFFFF) THEN
+    ' success
+    UdpSend from_ip$, "FILE_DONE|" + STR$(r_recv_sum%) + "|" + STR$(chunks_i%)
 
-WEB UDP OPEN SERVER PORT PORT%
-WEB UDP INTERRUPT OnUDP
-PAUSE 500
-myTicket% = INT(RND * 1000000)
-SendHello
-lastHello! = TIMER
+    ' Flash LEDs 3 times to indicate completion
+    LED_CompletionFlash
 
-CLS BG_COLOR%
-COLOR TEXT_COLOR%, BG_COLOR%
-PRINT @(10, 20) "Artillery Wi-Fi Setup"
-PRINT @(10, 50) "My Player: ";
-PRINT @(10, 70) "Peer: ";
-PRINT @(10, 100) "Press key when connected"
+    ' Build summary lines
+    LOCAL l1$, l2$, l3$
+    l1$ = "Received: " + r_target_path$
+    l2$ = "Bytes: " + STR$(r_total_size%) + "  Chunks: " + STR$(chunks_i%)
+    l3$ = "Checksum: " + HEX$(r_recv_sum%)
+    ShowSummaryAndWait "Transfer complete (receiver)", l1$, l2$, l3$
 
-DO WHILE INKEY$ = ""
-  COLOR TEXT_COLOR%, BG_COLOR%
-  PRINT @(120, 50);
-  IF myPlayer% = 0 THEN
-    PRINT "Unassigned"
-  ELSEIF myPlayer% = 1 THEN
-    PRINT "Player 1  "
+    r_active% = 0
   ELSE
-    PRINT "Player 2  "
+    PRINT "Checksum mismatch: got "; HEX$(r_recv_sum%); " expected "; HEX$(sum_i%)
+    UdpSend from_ip$, "FILE_CANCEL|checksum"
+    r_active% = 0
+    MarkMenuDirty("Receive failed: checksum mismatch")
   ENDIF
-  
-  PRINT @(120, 70);
-  IF peer$ = "" THEN
-    PRINT "Waiting...         "
+
+  r_active% = 0
+END SUB
+
+SUB HandleCancel(reason$)
+  IF s_active% THEN
+    PRINT "Sender canceled: "; reason$
+    CLOSE #9
+    s_active% = 0
+  ENDIF
+  IF r_active% THEN
+    PRINT "Receiver canceled: "; reason$
+    CLOSE #8
+    r_active% = 0
+  ENDIF
+END SUB
+
+' ===========================================================================
+'                                 UI
+' ===========================================================================
+SUB ShowSummaryAndWait(title$, line1$, line2$, line3$)
+  LOCAL k$
+  CLS
+  PRINT title$
+  PRINT STRING$(LEN(title$), "-")
+  IF LEN(line1$) THEN PRINT line1$
+  IF LEN(line2$) THEN PRINT line2$
+  IF LEN(line3$) THEN PRINT line3$
+  PRINT
+  PRINT "Press any key to return to menu..."
+  DO
+    k$ = INKEY$
+    IF LEN(k$) THEN EXIT DO
+    PAUSE 10
+  LOOP
+  MarkMenuDirty("")
+END SUB
+
+SUB SetConnectionConfirmed(ip$, name$)
+  LOCAL newPeerStr$
+  newPeerStr$ = ip$ + "  " + name$
+
+  ' update only if something actually changed
+  IF g_connected% = 0 OR (newPeerStr$ <> g_last_peer_str$) THEN
+    g_connected% = 1
+    g_last_peer_str$ = newPeerStr$
+    MarkMenuDirty("Connection confirmed")
+  ENDIF
+END SUB
+
+SUB DrawMenu()
+  CLS
+  PRINT "PicoCalc UDP Discovery + File Transfer"
+  PRINT STRING$(34, "-")
+  IF g_connected% THEN
+    PRINT "Connection: Confirmed"
+    IF LEN(g_last_peer_str$) THEN PRINT "Peer: "; g_last_peer_str$
   ELSE
-    PRINT peer$
+    PRINT "Connection: Searching..."
+    PRINT "(Press H to send beacons)"
   ENDIF
-  
-  IF assigned% = 0 AND (TIMER - lastHello!) >= 1 THEN
-    SendHello
-    lastHello! = TIMER
+  IF LEN(g_status$) THEN
+    PRINT
+    PRINT "Status: "; g_status$
+  ENDIF
+  PRINT
+  PRINT "Keys:"
+  PRINT "  H = HELLO beacons"
+  PRINT "  P = show peer"
+  PRINT "  S = send a file to peer"
+  PRINT "  W = listen 5s"
+  PRINT "  Q = quit"
+  g_menu_dirty% = 0
+  g_last_menu_draw_ms! = TIMER   ' record when we drew
+END SUB
+
+
+SUB MarkMenuDirty(status$)
+  g_status$ = status$
+  g_menu_dirty% = 1
+END SUB
+
+SUB PromptAndOffer()
+  IF LEN(g_peer_ip$) = 0 THEN
+    PRINT "No peer yet. Press H to discover."
+    EXIT SUB
   ENDIF
 
-  ' Retry ASSIGN message if no ACK received
-  IF assigned% = 1 AND seedAck% = 0 AND myPlayer% <> 0 AND myTicket% > 0 THEN
-    IF (TIMER - seedSentTime!) > 1 AND seedRetryCount% < 5 THEN
-      seedRetryCount% = seedRetryCount% + 1
-      WEB UDP SEND peer$, PORT%, "ASSIGN " + STR$(myPlayer%) + ",1," + STR$(terrainSeed%)
-      seedSentTime! = TIMER
-    ENDIF
+  LOCAL path$
+  print "File path to send (e.g. A:/foo.bin): "
+  line input "", path$
+  IF LEN(path$) = 0 THEN EXIT SUB
+  IF FileExists%(path$) = 0 THEN
+    PRINT "Not found: "; path$
+    EXIT SUB
   ENDIF
 
-  PAUSE 250
-LOOP
+  ' compute metadata again to keep logic in one place
+  LOCAL fsz%, sum%, base$
+  OPEN path$ FOR INPUT AS #3
+  fsz% = LOF(#3)
+  sum% = 0
+  LOCAL tmp1$
+  DO WHILE EOF(#3) = 0
+    tmp1$ = INPUT$(255, #3)
+    sum% = (sum% + Sum16%(tmp1$)) AND &HFFFF
+  LOOP
+  CLOSE #3
 
-' Wait for terrain
-DO WHILE terrainSeed% = 0
-  PAUSE 100
-LOOP
+  base$ = FileBaseName$(path$)
+  s_file_name_full$ = path$
+  SendFileOffer g_peer_ip$, path$
+END SUB
 
-PAUSE 200
-RedrawAll
+' ===========================================================================
+'                              LED FUNCTIONS
+' ===========================================================================
+SUB LED_Init()
+  ' Initialize all LEDs to off
+  LOCAL i%
+  FOR i% = 1 TO LED_COUNT%
+    led_buf%(i%) = 0
+  NEXT
+  BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+  led_last_flash! = 0
+END SUB
 
-' === Game loop ===
-DIM k$
+SUB LED_Clear()
+  ' Clear all LEDs
+  LOCAL i%
+  FOR i% = 1 TO LED_COUNT%
+    led_buf%(i%) = 0
+  NEXT
+  BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+END SUB
+
+SUB LED_Flash(r%, g%, b%)
+  ' Flash LEDs with specified color (throttled to be visible)
+  ' Color format: RGB packed as (R * &H10000) + (G * &H100) + B
+  LOCAL now!, i%, col%
+
+  now! = TIMER
+  ' Throttle updates so flashes are visible (minimum LED_FLASH_MS% between flashes)
+  IF (now! - led_last_flash!) < LED_FLASH_MS% THEN EXIT SUB
+
+  col% = (r% * &H10000) + (g% * &H100) + b%
+  FOR i% = 1 TO LED_COUNT%
+    led_buf%(i%) = col%
+  NEXT
+  BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+  PAUSE LED_FLASH_MS%
+  LED_Clear
+  led_last_flash! = now!
+END SUB
+
+SUB LED_CompletionFlash()
+  ' Flash all LEDs 3 times in green to indicate transfer completion
+  LOCAL i%, flash%
+  FOR flash% = 1 TO 3
+    ' Green flash
+    FOR i% = 1 TO LED_COUNT%
+      led_buf%(i%) = &H00FF00  ' Green: (0 * &H10000) + (255 * &H100) + 0
+    NEXT
+    BITBANG WS2812 O, GP28, LED_COUNT%, led_buf%()
+    PAUSE 150
+    ' Clear
+    LED_Clear
+    PAUSE 150
+  NEXT
+END SUB
+
+' ===========================================================================
+'                                MAIN
+' ===========================================================================
+CLS
+PRINT "PicoCalc UDP Discovery + File Transfer"
+
+' initialize indices for 1-based arrays BEFORE enabling interrupts
+q_head% = 1
+q_tail% = 1
+
+OpenUDP
+LED_Init
+
+g_device_name$ = DeviceName$()
+g_my_ip$ = GetMyIP$()
+g_broadcast_ip$ = "255.255.255.255"
+PRINT "Wi-Fi status: "; MM.INFO(TCPIP STATUS)
+PRINT "My IP: "; g_my_ip$
+PRINT "Name: "; g_device_name$
+DrawMenu
+
+' initial gentle beaconing until a peer appears
 DO
-  k$ = INKEY$
-  
-  IF proj_active% THEN
-    UpdateProjectile
-    UpdateLEDFade
-    PAUSE 30
-    CONTINUE DO
-  ENDIF
-  
-  IF k$ <> "" AND myPlayer% = currentPlayer% THEN
-    SELECT CASE ASC(k$)
-      CASE 130  ' Left arrow
-        ' Erase old barrel in black
-        IF myPlayer% = 1 THEN
-          DrawBarrel p1_x%, p1_y%, prev_angle%, BG_COLOR%
-        ELSE
-          DrawBarrel p2_x%, p2_y%, prev_angle%, BG_COLOR%
-        ENDIF
-
-        ' Update angle
-        prev_angle% = angle%
-        IF myPlayer% = 1 THEN
-          angle% = angle% + ANGLE_STEP%
-          IF angle% > 90 THEN angle% = 90
-        ELSE
-          angle% = angle% - ANGLE_STEP%
-          IF angle% < 0 THEN angle% = 0
-        ENDIF
-
-        ' Draw new barrel in player color
-        IF myPlayer% = 1 THEN
-          DrawBarrel p1_x%, p1_y%, angle%, P1_COLOR%
-        ELSE
-          DrawBarrel p2_x%, p2_y%, angle%, P2_COLOR%
-        ENDIF
-
-        ' Update HUD only
-        BOX 0, 210, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
-        DrawHUD
-
-      CASE 131  ' Right arrow
-        ' Erase old barrel in black
-        IF myPlayer% = 1 THEN
-          DrawBarrel p1_x%, p1_y%, prev_angle%, BG_COLOR%
-        ELSE
-          DrawBarrel p2_x%, p2_y%, prev_angle%, BG_COLOR%
-        ENDIF
-
-        ' Update angle
-        prev_angle% = angle%
-        IF myPlayer% = 1 THEN
-          angle% = angle% - ANGLE_STEP%
-          IF angle% < 0 THEN angle% = 0
-        ELSE
-          angle% = angle% + ANGLE_STEP%
-          IF angle% > 90 THEN angle% = 90
-        ENDIF
-
-        ' Draw new barrel in player color
-        IF myPlayer% = 1 THEN
-          DrawBarrel p1_x%, p1_y%, angle%, P1_COLOR%
-        ELSE
-          DrawBarrel p2_x%, p2_y%, angle%, P2_COLOR%
-        ENDIF
-
-        ' Update HUD only
-        BOX 0, 210, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
-        DrawHUD
-        
-      CASE 128
-        power% = power% + POWER_STEP%
-        IF power% > MAX_POWER% THEN power% = MAX_POWER%
-        BOX 0, 0, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
-        BOX 0, 210, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
-        DrawHUD
-        DrawCannon p1_x%, p1_y%, P1_COLOR%
-        DrawCannon p2_x%, p2_y%, P2_COLOR%
-        
-      CASE 129
-        power% = power% - POWER_STEP%
-        IF power% < MIN_POWER% THEN power% = MIN_POWER%
-        BOX 0, 0, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
-        BOX 0, 210, SCREEN_W%, 30, 1, BG_COLOR%, BG_COLOR%
-        DrawHUD
-        DrawCannon p1_x%, p1_y%, P1_COLOR%
-        DrawCannon p2_x%, p2_y%, P2_COLOR%
-        
-      CASE 13, 32
-        FireProjectile
-        IF peer$ <> "" THEN
-          lastMessage$ = "FIRE " + STR$(angle%) + "," + STR$(power%)
-          WEB UDP SEND peer$, PORT%, lastMessage$
-        ENDIF
-    END SELECT
+  IF g_peer_known% = 0 AND (TIMER - g_last_hello!) >= 1 THEN
+    UdpSend "255.255.255.255", "HELLO|" + g_device_name$
+    g_last_hello! = TIMER
   ENDIF
 
-  ' Update LED fade effect
-  UpdateLEDFade
+  ' drain queue
+  IF QueueHasItem%() THEN
+    DequeueMessage msg_cmd$, msg_arg$, msg_ip$
 
-  PAUSE 20
+    IF msg_cmd$ = "HELLO" THEN
+      g_peer_ip$ = msg_ip$ : g_peer_name$ = msg_arg$ : g_peer_known% = 1
+      SetConnectionConfirmed msg_ip$, msg_arg$
+
+
+
+    ELSEIF msg_cmd$ = "PEER" THEN
+      g_peer_ip$ = msg_ip$ : g_peer_name$ = msg_arg$ : g_peer_known% = 1
+      SetConnectionConfirmed msg_ip$, msg_arg$
+
+
+    ELSEIF msg_cmd$ = "FILE_OFFER" THEN
+      HandleFileOffer msg_ip$, msg_arg$
+
+    ELSEIF msg_cmd$ = "FILE_ACCEPT" THEN
+      IF s_active% = 0 THEN
+        IF FileExists%(s_file_name_full$) = 0 THEN
+          PRINT "File missing; canceling."
+          UdpSend msg_ip$, "FILE_CANCEL|missing"
+        ELSE
+          OPEN s_file_name_full$ FOR INPUT AS #4
+          work_file_size% = LOF(#4)
+          work_sum16% = 0
+          DO WHILE EOF(#4) = 0
+            work_chunk$ = INPUT$(255, #4)
+            work_sum16% = (work_sum16% + Sum16%(work_chunk$)) AND &HFFFF
+          LOOP
+          CLOSE #4
+          s_file_basename$ = msg_arg$
+          s_file_size% = work_file_size%
+          s_sent_sum% = 0
+          s_total_chunks% = (work_file_size% + CHUNK_BYTES% - 1) \ CHUNK_BYTES%
+          OPEN s_file_name_full$ FOR INPUT AS #9
+          s_active% = 1
+          s_next_seq% = 1
+          s_waiting_ack_seq% = 1
+          s_retry_count% = 0
+          MarkMenuDirty("Sending " + msg_arg$ + "...")
+          SendNextChunk msg_ip$
+        ENDIF
+      ENDIF
+
+    ELSEIF msg_cmd$ = "FILE_ACK" THEN
+      HandleAck msg_ip$, VAL(msg_arg$)
+
+    ELSEIF msg_cmd$ = "FILE_CHUNK" THEN
+      HandleChunk msg_ip$, msg_arg$
+
+    ELSEIF msg_cmd$ = "FILE_DONE" THEN
+      IF r_active% THEN
+        HandleFileDone msg_ip$, msg_arg$
+    ELSEIF s_active% THEN
+      CLOSE #9
+      ' Flash LEDs 3 times to indicate completion
+      LED_CompletionFlash
+      ' Build sender summary (mirrors receiver UX)
+      l1$ = "Sent: " + s_file_basename$ + " ? " + msg_ip$
+      l2$ = "Bytes: " + STR$(s_file_size%) + "  Chunks: " + STR$(s_total_chunks%)
+      l3$ = "Checksum: " + HEX$(s_sent_sum%)
+      ShowSummaryAndWait "Transfer complete (sender)", l1$, l2$, l3$
+      s_active% = 0
+      MarkMenuDirty("")
+    END IF
+
+
+    ELSEIF msg_cmd$ = "FILE_CANCEL" THEN
+      HandleCancel msg_arg$
+
+    ELSEIF LEN(msg_cmd$) > 0 THEN
+      PRINT "RX "; msg_cmd$; " from "; msg_ip$
+    ENDIF
+  ENDIF
+
+  ' deferred reply (peer handshake) outside ISR
+  IF pending_reply_needed% THEN
+    UdpSend pending_reply_ip$, "PEER|" + pending_reply_name$
+    pending_reply_needed% = 0
+    IF LEN(g_peer_ip$) = 0 THEN g_peer_ip$ = pending_reply_ip$
+    IF LEN(g_peer_name$) = 0 THEN g_peer_name$ = pending_reply_name$
+    SetConnectionConfirmed g_peer_ip$, g_peer_name$
+
+  END IF
+
+
+  ' sender timeout handling
+  IF s_active% THEN
+    MaybeResendChunk g_peer_ip$
+  ENDIF
+
+  ' keys
+  g_key$ = INKEY$
+  IF g_key$ = "H" OR g_key$ = "h" THEN
+    BroadcastHello
+  ELSEIF g_key$ = "P" OR g_key$ = "p" THEN
+    IF LEN(g_peer_ip$) THEN
+      PRINT "Peer: "; g_peer_ip$; "  name="; g_peer_name$
+    ELSE
+      PRINT "No peer recorded yet."
+    ENDIF
+  ELSEIF g_key$ = "S" OR g_key$ = "s" THEN
+    IF LEN(g_peer_ip$) = 0 THEN PRINT "No peer yet." ELSE PromptAndOffer
+  ELSEIF g_key$ = "W" OR g_key$ = "w" THEN
+    PRINT "Listening for 5 seconds..." : PAUSE 5000 : PRINT "Done."
+  ELSEIF g_key$ = "Q" OR g_key$ = "q" THEN
+    EXIT DO
+  ENDIF
+  IF g_menu_dirty% THEN
+    IF (TIMER - g_last_menu_draw_ms!) >= MIN_MENU_REDRAW_MS% THEN
+      DrawMenu
+    ENDIF
+  END IF
+  PAUSE GLOBAL_POLL_MS%
 LOOP
+
+PRINT "Bye."
+Pause 2000
+run "B:menu.bas"
+END

@@ -225,7 +225,7 @@ SUB GenerateTerrain(seed%)
 
   ' Generate wind from seed
   GetRND
-  wind! = (rngValue! - 0.5) * 0.6
+  wind! = (rngValue! - 0.5) * 1.2
 
   ' Generate terrain
   FOR x% = 1 TO SCREEN_W%

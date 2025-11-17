@@ -250,16 +250,14 @@ SUB GenerateTerrain(seed%)
     terrain%(x%) = h%
   NEXT x%
   
-  ' Smooth terrain
-  FOR i% = 1 TO 2
-    FOR x% = 2 TO SCREEN_W% - 1
-      IF ABS(x% - p1_x%) < 10 OR ABS(x% - p2_x%) < 10 THEN
-        ' Keep flat
-      ELSE
-        terrain%(x%) = (terrain%(x%-1) + terrain%(x%) + terrain%(x%+1)) \ 3
-      ENDIF
-    NEXT x%
-  NEXT i%
+  ' Smooth terrain (1 pass)
+  FOR x% = 2 TO SCREEN_W% - 1
+    IF ABS(x% - p1_x%) < 10 OR ABS(x% - p2_x%) < 10 THEN
+      ' Keep flat
+    ELSE
+      terrain%(x%) = (terrain%(x%-1) + terrain%(x%) + terrain%(x%+1)) \ 3
+    ENDIF
+  NEXT x%
   
   p1_y% = terrain%(p1_x%)
   p2_y% = terrain%(p2_x%)

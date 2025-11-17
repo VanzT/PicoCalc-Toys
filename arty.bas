@@ -77,6 +77,8 @@ DIM rngValue! = 0.0
 ' LED effects
 DIM ledBuffer%(LEDCOUNT%)
 DIM ledFadeActive% = 0
+DIM ledFadeStep% = 0
+DIM ledFadeCounter% = 0
 
 ' === SUB: Send Hello ===
 SUB SendHello
@@ -87,8 +89,8 @@ END SUB
 SUB SetLEDs(red%, green%, blue%)
   LOCAL i%
   FOR i% = 1 TO LEDCOUNT%
-    ' Pack as GRB: (G * &H10000) + (R * &H100) + B
-    ledBuffer%(i%) = (green% * &H10000) + (red% * &H100) + blue%
+    ' Pack as RGB: (R * &H10000) + (G * &H100) + B
+    ledBuffer%(i%) = (red% * &H10000) + (green% * &H100) + blue%
   NEXT i%
   BITBANG WS2812 O, GP28, LEDCOUNT%, ledBuffer%()
 END SUB
@@ -99,45 +101,94 @@ SUB CannonFireEffects
   BOX 0, 0, SCREEN_W%, SCREEN_H%, 1, RGB(255,255,255), RGB(255,255,255)
   PAUSE 50
 
-  ' Set LEDs to white and mark fade as active
-  SetLEDs 255, 255, 255
-  ledFadeActive% = 1
-
   ' Redraw game (screen returns to normal immediately)
   RedrawAll
+
+  ' Start LED fade
+  SetLEDs 255, 255, 255
+  ledFadeActive% = 1
+  ledFadeStep% = 0
+  ledFadeCounter% = 0
+END SUB
+
+' === SUB: Explosion effect for when cannon is hit ===
+SUB ExplosionEffect
+  LOCAL iteration%, led%, colorChoice%, brightness%, r%, g%, b%
+
+  ' Run explosion for 15 iterations (~1.5 seconds)
+  FOR iteration% = 1 TO 15
+    ' Update each LED independently with random color and brightness
+    FOR led% = 1 TO LEDCOUNT%
+      ' Random choice: weighted toward red/orange
+      ' 0-9 = off, 10-49 = red, 50-69 = yellow, 70-99 = orange
+      colorChoice% = INT(RND * 100)
+
+      IF colorChoice% < 10 THEN
+        ' 10% off for flicker effect
+        ledBuffer%(led%) = 0
+      ELSE
+        ' Random brightness (brighter at start, dimmer at end)
+        brightness% = INT(RND * (255 - iteration% * 15))
+        IF brightness% < 0 THEN brightness% = 0
+
+        IF colorChoice% < 50 THEN
+          ' 40% Red: RGB(255, 0, 0) packed as GRB
+          r% = brightness%
+          g% = 0
+          b% = 0
+        ELSEIF colorChoice% < 70 THEN
+          ' 20% Yellow: RGB(255, 200, 0) - less green for more orange-yellow
+          r% = brightness%
+          g% = (brightness% * 3) \ 4
+          b% = 0
+        ELSE
+          ' 30% Orange: RGB(255, 80, 0) - deeper orange
+          r% = brightness%
+          g% = (brightness% * 80) \ 255
+          b% = 0
+        ENDIF
+
+        ' Pack as RGB: (R * &H10000) + (G * &H100) + B
+        ledBuffer%(led%) = (r% * &H10000) + (g% * &H100) + b%
+      ENDIF
+    NEXT led%
+
+    ' Send to LEDs
+    BITBANG WS2812 O, GP28, LEDCOUNT%, ledBuffer%()
+
+    PAUSE 100
+  NEXT iteration%
+
+  ' Turn off all LEDs when done
+  SetLEDs 0, 0, 0
 END SUB
 
 ' === SUB: Update LED fade (call from main loop) ===
 SUB UpdateLEDFade
-  LOCAL brightness%, fadeTime!
-  STATIC fadeStart! = 0
-  STATIC lastActive% = 0
+  LOCAL brightness%
 
-  IF ledFadeActive% = 0 THEN
-    fadeStart! = 0
-    lastActive% = 0
-    EXIT SUB
-  ENDIF
+  IF ledFadeActive% = 0 THEN EXIT SUB
 
-  ' Reset timer if this is a new fade (ledFadeActive just became 1)
-  IF lastActive% = 0 THEN
-    fadeStart! = TIMER
-    lastActive% = 1
-  ENDIF
+  ' Increment counter each call (~every 30ms)
+  ledFadeCounter% = ledFadeCounter% + 1
 
-  fadeTime! = TIMER - fadeStart!
+  ' Update brightness every 3 calls (~100ms)
+  IF ledFadeCounter% >= 3 THEN
+    ledFadeCounter% = 0
+    ledFadeStep% = ledFadeStep% + 1
 
-  ' Fade linearly over 1 second
-  IF fadeTime! >= 1.0 THEN
-    ' Fade complete - turn off LEDs
-    SetLEDs 0, 0, 0
-    ledFadeActive% = 0
-  ELSE
-    ' Linear fade: brightness decreases at constant rate
-    brightness% = INT(255.0 * (1.0 - fadeTime!))
-    IF brightness% < 0 THEN brightness% = 0
-    IF brightness% > 255 THEN brightness% = 255
-    SetLEDs brightness%, brightness%, brightness%
+    ' Calculate brightness for this step (10 steps total)
+    IF ledFadeStep% >= 10 THEN
+      ' Fade complete
+      SetLEDs 0, 0, 0
+      ledFadeActive% = 0
+      ledFadeStep% = 0
+    ELSE
+      ' Fade in progress: 255, 230, 205, 180, 155, 130, 105, 80, 55, 30
+      brightness% = 255 - (ledFadeStep% * 25)
+      IF brightness% < 0 THEN brightness% = 0
+      SetLEDs brightness%, brightness%, brightness%
+    ENDIF
   ENDIF
 END SUB
 
@@ -413,8 +464,13 @@ SUB UpdateProjectile
           p2_score% = p2_score% + 1
         ENDIF
         ShowHitMessage 1
+
+        ' Trigger explosion effect if I'm Player 1 (I got hit)
+        IF myPlayer% = 1 THEN
+          ExplosionEffect
+        ENDIF
       ENDIF
-      
+
       ' Check P2 hit - within 10 pixel width
       IF ABS(proj_x! - p2_x%) <= 10 AND ABS(proj_y! - p2_y%) <= 15 THEN
         hit% = 2
@@ -424,6 +480,11 @@ SUB UpdateProjectile
           p2_score% = p2_score% + 1
         ENDIF
         ShowHitMessage 2
+
+        ' Trigger explosion effect if I'm Player 2 (I got hit)
+        IF myPlayer% = 2 THEN
+          ExplosionEffect
+        ENDIF
       ENDIF
       
       IF hit% > 0 THEN
@@ -723,6 +784,7 @@ DO
   
   IF proj_active% THEN
     UpdateProjectile
+    UpdateLEDFade
     PAUSE 30
     CONTINUE DO
   ENDIF

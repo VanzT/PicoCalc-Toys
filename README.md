@@ -41,6 +41,9 @@ methods of recording the data.
 matrix.bas - The Matrix style animation.  I'm quite pleased with the random white
 flashes at the head of some drops
 
+menu.bas - taken from somewhere and modified to my aesthetic tastes. As soon as I 
+can find it again, I will give poper credit.
+
 muthur.bas - very lame Alien-ish animation.  Terrible, is a kind description
 
 nostromo.bas - farily proud of this one.  Another Alien inspired animation

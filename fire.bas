@@ -37,6 +37,7 @@ Dim boxW%, boxH%, boxX%, boxY%  ' For screen drawing
 Dim numBoxes%, boxSize%     ' For random box effect
 Dim hearthX%, hearthY%, hearthW%, hearthH%  ' Fireplace dimensions
 Dim numEmbers%, emberX%, emberY%, emberSize%, emberBright%  ' Ember effect
+Dim shrink%                 ' For filled box effect
 
 '-------------------------------------------------------------------
 ' INITIAL SETUP
@@ -118,10 +119,12 @@ Sub RunFireVisualization
       Case 0
         FlickeringFlames
       Case 1
-        Campfire
+        FilledFlames
       Case 2
-        Fireplace
+        Campfire
       Case 3
+        Fireplace
+      Case 4
         GlowingEmbers
     End Select
 
@@ -134,12 +137,12 @@ Sub RunFireVisualization
       Select Case k$
         Case Chr$(130)   ' LEFT button
           effectMode% = effectMode% - 1
-          If effectMode% < 0 Then effectMode% = 3
+          If effectMode% < 0 Then effectMode% = 4
           Pause 200  ' Debounce
 
         Case Chr$(131)   ' RIGHT button
           effectMode% = effectMode% + 1
-          If effectMode% > 3 Then effectMode% = 0
+          If effectMode% > 4 Then effectMode% = 0
           Pause 200  ' Debounce
 
         Case Chr$(128)   ' UP button
@@ -232,7 +235,81 @@ Sub FlickeringFlames
 End Sub
 
 '-------------------------------------------------------------------
-' EFFECT 1: Campfire
+' EFFECT 1: Filled Flames
+' Same as Flickering Flames but with solid filled bars
+'-------------------------------------------------------------------
+
+Sub FilledFlames
+  ' Draw vertical flame bars on screen - same as Effect 0 but with full blocks
+  ' Clear screen to black first
+  Box 0, 0, screenW%, screenH%, 1, RGB(0, 0, 0)
+
+  boxW% = screenW% \ LEDCOUNT
+
+  For i% = 0 To LEDCOUNT - 1
+    ' Smooth transition to target heights
+    If heights%(i%) < targets%(i%) Then
+      heights%(i%) = heights%(i%) + 1
+    ElseIf heights%(i%) > targets%(i%) Then
+      heights%(i%) = heights%(i%) - 1
+    Else
+      ' Reached target, set new target
+      targets%(i%) = Int(Rnd * 10)
+    End If
+
+    flameHeight% = heights%(i%)
+
+    If flameHeight% = 0 Then
+      b%(i%) = 0
+    Else
+      ' Choose fire color based on height
+      colorChoice% = Int(Rnd * 100)
+
+      If flameHeight% > 7 Then
+        ' Tall flames: yellow or white
+        If colorChoice% < 80 Then
+          rCol% = 255 : gCol% = 255 : bCol% = 0   ' Yellow
+        Else
+          rCol% = 255 : gCol% = 255 : bCol% = 150  ' Pale yellow-white
+        End If
+      ElseIf flameHeight% > 4 Then
+        ' Medium flames: orange to yellow
+        If colorChoice% < 70 Then
+          rCol% = 255 : gCol% = 180 : bCol% = 0   ' Orange-yellow
+        Else
+          rCol% = 255 : gCol% = 255 : bCol% = 0   ' Yellow
+        End If
+      Else
+        ' Low flames: red to orange
+        If colorChoice% < 60 Then
+          rCol% = 255 : gCol% = 50 : bCol% = 0    ' Red-orange
+        Else
+          rCol% = 255 : gCol% = 127 : bCol% = 0   ' Orange
+        End If
+      End If
+
+      ' Apply brightness
+      rAdj% = (rCol% * brightness%) \ 255
+      gAdj% = (gCol% * brightness%) \ 255
+      bAdj% = (bCol% * brightness%) \ 255
+
+      b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+
+      ' Draw flame bar - filled by drawing many concentric boxes
+      boxH% = (flameHeight% * screenH%) \ 10
+      boxY% = screenH% - boxH%
+      boxX% = i% * boxW%
+
+      ' Draw concentric boxes to fill the area
+      For shrink% = 0 To Min(boxW% \ 2, boxH% \ 2) Step 1
+        Box boxX% + shrink%, boxY% + shrink%, boxW% - (shrink% * 2), boxH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+      Next shrink%
+    End If
+  Next i%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 2: Campfire
 ' More chaotic, dancing flames with rapid changes
 '-------------------------------------------------------------------
 
@@ -425,13 +502,13 @@ Sub GlowingEmbers
 
   ' Update LEDs
   For i% = 0 To LEDCOUNT - 1
-    ' Each LED has its own pulse phase
-    pulseVal%(i%) = pulseVal%(i%) + Int(2 + Rnd * 3)
+    ' Each LED has its own pulse phase - slow pulsing
+    pulseVal%(i%) = pulseVal%(i%) + 1
     If pulseVal%(i%) > 359 Then pulseVal%(i%) = 0
 
-    ' Gentle pulsing intensity
-    intensity% = Sin(Rad(pulseVal%(i%))) * 80 + 175
-    If intensity% < 100 Then intensity% = 100
+    ' Deeper, more dramatic pulsing intensity
+    intensity% = Sin(Rad(pulseVal%(i%))) * 100 + 155
+    If intensity% < 55 Then intensity% = 55
     If intensity% > 255 Then intensity% = 255
 
     ' Deep red to orange embers

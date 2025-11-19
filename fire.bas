@@ -27,6 +27,7 @@ Dim emberColorChoice%(LEDCOUNT - 1) ' Current color for each ember
 Dim i%, j%, k$
 Dim effectMode%             ' Current fire effect (0-3)
 Dim brightness%             ' Global brightness (0-255)
+Dim showScreen%             ' Toggle for screen visualizations (1=on, 0=off)
 Dim rCol%, gCol%, bCol%     ' Color components
 Dim rAdj%, gAdj%, bAdj%     ' Brightness-adjusted colors
 Dim flameHeight%
@@ -65,6 +66,7 @@ Dim spiralX%, spiralY%
 
 effectMode% = 0    ' Start with first effect
 brightness% = 200  ' Start at 78% brightness
+showScreen% = 1    ' Screen visualizations on by default
 emberFrameCount% = 0
 breathPhase% = 0
 wavePos% = 0
@@ -97,38 +99,31 @@ Next i%
 '-------------------------------------------------------------------
 ' MAIN MENU LOOP
 '-------------------------------------------------------------------
+Cls
+Print "Fire Visualization"
+Print
+Print "Controls:"
+Print "  LEFT/RIGHT: Change effect"
+Print "  UP/DOWN: Brightness"
+Print "  S: Toggle screen display"
+Print "  Q: Quit to menu"
+Print
+Print "Press any key to start..."
+
+k$ = ""
 Do
-  Cls
-  Print "Fire Visualization"
-  Print
-  Print "LEFT/RIGHT: Change effect"
-  Print "UP/DOWN: Brightness"
-  Print "Any key: Exit"
-  Print
-  Print "Press any key to start..."
+  k$ = Inkey$
+Loop Until k$ <> ""
 
-  k$ = ""
-  Do
-    k$ = Inkey$
-  Loop Until k$ <> ""
+' Run the fire visualization
+RunFireVisualization
 
-  ' Run the fire visualization
-  RunFireVisualization
-
-  ' Ask if user wants to continue
-  Cls
-  Print "Return to menu? (Y/N)"
-  k$ = ""
-  Do
-    k$ = Inkey$
-  Loop Until k$ <> ""
-
-  If UCase$(k$) = "N" Then Exit Do
-Loop
-
-' Clear LEDs before exit
+' Clear LEDs and screen before exit
 ClearAll
-End
+Cls
+
+' Run menu.bas
+Run "menu.bas"
 
 '-------------------------------------------------------------------
 ' MAIN VISUALIZATION LOOP
@@ -144,10 +139,15 @@ Sub RunFireVisualization
   Cls
 
   Do
-    ' Clear screen when effect changes
+    ' Clear screen when effect changes or when toggling screen viz
     If effectMode% <> lastEffect% Then
       Cls
       lastEffect% = effectMode%
+    End If
+
+    ' Keep screen black when screen display is off
+    If showScreen% = 0 Then
+      Cls
     End If
 
     ' Render the current fire effect
@@ -201,9 +201,16 @@ Sub RunFireVisualization
           brightness% = Max(brightness% - 15, 20)
           Pause 100
 
-        Case Else
-          ' Any other key exits
+        Case "q", "Q"    ' Quit
           Exit Sub
+
+        Case "s", "S"    ' Toggle screen display
+          showScreen% = 1 - showScreen%
+          If showScreen% = 0 Then
+            ' Clear screen to black when turning off
+            Cls
+          End If
+          Pause 200  ' Debounce
       End Select
     End If
 
@@ -218,7 +225,9 @@ End Sub
 
 Sub FlickeringFlames
   ' Draw vertical flame bars on screen (mimicking 8 LEDs)
-  boxW% = screenW% \ LEDCOUNT
+  If showScreen% = 1 Then
+    boxW% = screenW% \ LEDCOUNT
+  End If
 
   For i% = 0 To LEDCOUNT - 1
     ' Smooth transition to target heights
@@ -270,14 +279,18 @@ Sub FlickeringFlames
       b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
 
       ' Draw flame bar on screen
-      boxX% = i% * boxW%
-      boxH% = (flameHeight% * screenH%) \ 10
-      boxY% = screenH% - boxH%
-      Box boxX%, boxY%, boxW% - 2, boxH%, 1, RGB(rAdj%, gAdj%, bAdj%)
+      If showScreen% = 1 Then
+        boxX% = i% * boxW%
+        boxH% = (flameHeight% * screenH%) \ 10
+        boxY% = screenH% - boxH%
+        Box boxX%, boxY%, boxW% - 2, boxH%, 1, RGB(rAdj%, gAdj%, bAdj%)
+      End If
     Else
       ' Clear this bar if no flame
-      boxX% = i% * boxW%
-      Box boxX%, 0, boxW% - 2, screenH%, 1, RGB(0, 0, 0)
+      If showScreen% = 1 Then
+        boxX% = i% * boxW%
+        Box boxX%, 0, boxW% - 2, screenH%, 1, RGB(0, 0, 0)
+      End If
     End If
   Next i%
 End Sub
@@ -289,10 +302,11 @@ End Sub
 
 Sub FilledFlames
   ' Draw vertical flame bars on screen - same as Effect 0 but with full blocks
-  ' Clear screen to black first
-  Box 0, 0, screenW%, screenH%, 1, RGB(0, 0, 0)
-
-  boxW% = screenW% \ LEDCOUNT
+  If showScreen% = 1 Then
+    ' Clear screen to black first
+    Box 0, 0, screenW%, screenH%, 1, RGB(0, 0, 0)
+    boxW% = screenW% \ LEDCOUNT
+  End If
 
   For i% = 0 To LEDCOUNT - 1
     ' Smooth transition to target heights
@@ -344,14 +358,16 @@ Sub FilledFlames
       b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
 
       ' Draw flame bar - filled by drawing many concentric boxes
-      boxH% = (flameHeight% * screenH%) \ 10
-      boxY% = screenH% - boxH%
-      boxX% = i% * boxW%
+      If showScreen% = 1 Then
+        boxH% = (flameHeight% * screenH%) \ 10
+        boxY% = screenH% - boxH%
+        boxX% = i% * boxW%
 
-      ' Draw concentric boxes to fill the area
-      For shrink% = 0 To Min(boxW% \ 2, boxH% \ 2) Step 1
-        Box boxX% + shrink%, boxY% + shrink%, boxW% - (shrink% * 2), boxH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
-      Next shrink%
+        ' Draw concentric boxes to fill the area
+        For shrink% = 0 To Min(boxW% \ 2, boxH% \ 2) Step 1
+          Box boxX% + shrink%, boxY% + shrink%, boxW% - (shrink% * 2), boxH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+        Next shrink%
+      End If
     End If
   Next i%
 End Sub
@@ -363,32 +379,34 @@ End Sub
 
 Sub Campfire
   ' Draw random fire boxes all over screen
-  numBoxes% = 15
+  If showScreen% = 1 Then
+    numBoxes% = 15
 
-  For j% = 0 To numBoxes% - 1
-    ' Random box position and size
-    boxSize% = Int(10 + Rnd * 30)
-    boxX% = Int(Rnd * (screenW% - boxSize%))
-    boxY% = Int(Rnd * (screenH% - boxSize%))
+    For j% = 0 To numBoxes% - 1
+      ' Random box position and size
+      boxSize% = Int(10 + Rnd * 30)
+      boxX% = Int(Rnd * (screenW% - boxSize%))
+      boxY% = Int(Rnd * (screenH% - boxSize%))
 
-    ' Random fire color
-    intensity% = Int(Rnd * 255)
-    If intensity% < 100 Then
-      rCol% = 200 : gCol% = 0 : bCol% = 0
-    ElseIf intensity% < 160 Then
-      rCol% = 255 : gCol% = Int(Rnd * 100) : bCol% = 0
-    ElseIf intensity% < 220 Then
-      rCol% = 255 : gCol% = Int(100 + Rnd * 155) : bCol% = 0
-    Else
-      rCol% = 255 : gCol% = 255 : bCol% = Int(Rnd * 100)
-    End If
+      ' Random fire color
+      intensity% = Int(Rnd * 255)
+      If intensity% < 100 Then
+        rCol% = 200 : gCol% = 0 : bCol% = 0
+      ElseIf intensity% < 160 Then
+        rCol% = 255 : gCol% = Int(Rnd * 100) : bCol% = 0
+      ElseIf intensity% < 220 Then
+        rCol% = 255 : gCol% = Int(100 + Rnd * 155) : bCol% = 0
+      Else
+        rCol% = 255 : gCol% = 255 : bCol% = Int(Rnd * 100)
+      End If
 
-    rAdj% = (rCol% * brightness%) \ 255
-    gAdj% = (gCol% * brightness%) \ 255
-    bAdj% = (bCol% * brightness%) \ 255
+      rAdj% = (rCol% * brightness%) \ 255
+      gAdj% = (gCol% * brightness%) \ 255
+      bAdj% = (bCol% * brightness%) \ 255
 
-    Box boxX%, boxY%, boxSize%, boxSize%, 1, RGB(rAdj%, gAdj%, bAdj%)
-  Next j%
+      Box boxX%, boxY%, boxSize%, boxSize%, 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next j%
+  End If
 
   ' Update LEDs
   For i% = 0 To LEDCOUNT - 1
@@ -430,40 +448,42 @@ Sub Fireplace
   waveOffset% = waveOffset% + 1
   If waveOffset% > 359 Then waveOffset% = 0
 
-  ' Draw fireplace frame (dark brown/brick)
-  Box 0, 0, screenW%, screenH%, 1, RGB(40, 20, 10)
+  If showScreen% = 1 Then
+    ' Draw fireplace frame (dark brown/brick)
+    Box 0, 0, screenW%, screenH%, 1, RGB(40, 20, 10)
 
-  ' Draw hearth opening (black)
-  hearthX% = screenW% \ 8
-  hearthY% = screenH% \ 4
-  hearthW% = (screenW% * 3) \ 4
-  hearthH% = (screenH% * 2) \ 3
-  Box hearthX%, hearthY%, hearthW%, hearthH%, 1, RGB(0, 0, 0)
+    ' Draw hearth opening (black)
+    hearthX% = screenW% \ 8
+    hearthY% = screenH% \ 4
+    hearthW% = (screenW% * 3) \ 4
+    hearthH% = (screenH% * 2) \ 3
+    Box hearthX%, hearthY%, hearthW%, hearthH%, 1, RGB(0, 0, 0)
 
-  ' Draw flames inside fireplace
-  For j% = 0 To 11
-    boxW% = hearthW% \ 12
-    boxX% = hearthX% + (j% * boxW%)
-    intensity% = Sin(Rad((j% * 30 + waveOffset%) Mod 360)) * 40 + 215
-    boxH% = Int((intensity% * hearthH%) \ 300)
-    boxY% = hearthY% + hearthH% - boxH%
+    ' Draw flames inside fireplace
+    For j% = 0 To 11
+      boxW% = hearthW% \ 12
+      boxX% = hearthX% + (j% * boxW%)
+      intensity% = Sin(Rad((j% * 30 + waveOffset%) Mod 360)) * 40 + 215
+      boxH% = Int((intensity% * hearthH%) \ 300)
+      boxY% = hearthY% + hearthH% - boxH%
 
-    ' Vary colors
-    colorChoice% = Int(Rnd * 100)
-    If colorChoice% < 60 Then
-      rCol% = 255 : gCol% = 127 : bCol% = 0
-    ElseIf colorChoice% < 90 Then
-      rCol% = 255 : gCol% = 200 : bCol% = 0
-    Else
-      rCol% = 255 : gCol% = 80 : bCol% = 0
-    End If
+      ' Vary colors
+      colorChoice% = Int(Rnd * 100)
+      If colorChoice% < 60 Then
+        rCol% = 255 : gCol% = 127 : bCol% = 0
+      ElseIf colorChoice% < 90 Then
+        rCol% = 255 : gCol% = 200 : bCol% = 0
+      Else
+        rCol% = 255 : gCol% = 80 : bCol% = 0
+      End If
 
-    rAdj% = (rCol% * brightness%) \ 255
-    gAdj% = (gCol% * brightness%) \ 255
-    bAdj% = (bCol% * brightness%) \ 255
+      rAdj% = (rCol% * brightness%) \ 255
+      gAdj% = (gCol% * brightness%) \ 255
+      bAdj% = (bCol% * brightness%) \ 255
 
-    Box boxX%, boxY%, boxW% - 1, boxH%, 1, RGB(rAdj%, gAdj%, bAdj%)
-  Next j%
+      Box boxX%, boxY%, boxW% - 1, boxH%, 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next j%
+  End If
 
   ' Update LEDs
   For i% = 0 To LEDCOUNT - 1
@@ -508,45 +528,47 @@ Sub GlowingEmbers
   emberPhase% = emberPhase% + 3
   If emberPhase% > 359 Then emberPhase% = 0
 
-  ' Draw background (dark)
-  Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 0)
+  If showScreen% = 1 Then
+    ' Draw background (dark)
+    Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 0)
 
-  ' Draw pulsing ember circles
-  numEmbers% = 12
+    ' Draw pulsing ember circles
+    numEmbers% = 12
 
-  For j% = 0 To numEmbers% - 1
-    ' Position embers in a grid-like pattern
-    emberX% = (j% Mod 4) * (screenW% \ 4) + (screenW% \ 8)
-    emberY% = (j% \ 4) * (screenH% \ 3) + (screenH% \ 6)
+    For j% = 0 To numEmbers% - 1
+      ' Position embers in a grid-like pattern
+      emberX% = (j% Mod 4) * (screenW% \ 4) + (screenW% \ 8)
+      emberY% = (j% \ 4) * (screenH% \ 3) + (screenH% \ 6)
 
-    ' Each ember pulses independently
-    emberBright% = Sin(Rad((emberPhase% + j% * 30) Mod 360)) * 80 + 175
-    If emberBright% < 100 Then emberBright% = 100
-    If emberBright% > 255 Then emberBright% = 255
+      ' Each ember pulses independently
+      emberBright% = Sin(Rad((emberPhase% + j% * 30) Mod 360)) * 80 + 175
+      If emberBright% < 100 Then emberBright% = 100
+      If emberBright% > 255 Then emberBright% = 255
 
-    ' Size varies with brightness
-    emberSize% = (emberBright% \ 15) + 5
+      ' Size varies with brightness
+      emberSize% = (emberBright% \ 15) + 5
 
-    ' Deep red to orange
-    colorChoice% = Int(Rnd * 100)
-    If colorChoice% < 70 Then
-      rCol% = 200 : gCol% = 0 : bCol% = 0
-    ElseIf colorChoice% < 95 Then
-      rCol% = 255 : gCol% = 60 : bCol% = 0
-    Else
-      rCol% = 255 : gCol% = 127 : bCol% = 0
-    End If
+      ' Deep red to orange
+      colorChoice% = Int(Rnd * 100)
+      If colorChoice% < 70 Then
+        rCol% = 200 : gCol% = 0 : bCol% = 0
+      ElseIf colorChoice% < 95 Then
+        rCol% = 255 : gCol% = 60 : bCol% = 0
+      Else
+        rCol% = 255 : gCol% = 127 : bCol% = 0
+      End If
 
-    rCol% = (rCol% * emberBright%) \ 255
-    gCol% = (gCol% * emberBright%) \ 255
-    bCol% = (bCol% * emberBright%) \ 255
+      rCol% = (rCol% * emberBright%) \ 255
+      gCol% = (gCol% * emberBright%) \ 255
+      bCol% = (bCol% * emberBright%) \ 255
 
-    rAdj% = (rCol% * brightness%) \ 255
-    gAdj% = (gCol% * brightness%) \ 255
-    bAdj% = (bCol% * brightness%) \ 255
+      rAdj% = (rCol% * brightness%) \ 255
+      gAdj% = (gCol% * brightness%) \ 255
+      bAdj% = (bCol% * brightness%) \ 255
 
-    Circle emberX%, emberY%, emberSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
-  Next j%
+      Circle emberX%, emberY%, emberSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next j%
+  End If
 
   ' Update LEDs - slow, peaceful pulsing
   emberFrameCount% = emberFrameCount% + 1
@@ -607,38 +629,40 @@ Sub BreathingEmbers
   breathPhase% = breathPhase% + 1
   If breathPhase% > 719 Then breathPhase% = 0
 
-  ' Draw background (very dark)
-  Box 0, 0, screenW%, screenH%, 1, RGB(5, 2, 0)
+  If showScreen% = 1 Then
+    ' Draw background (very dark)
+    Box 0, 0, screenW%, screenH%, 1, RGB(5, 2, 0)
 
-  ' Draw breathing ember circles on screen
-  numEmbers% = 12
+    ' Draw breathing ember circles on screen
+    numEmbers% = 12
 
-  For j% = 0 To numEmbers% - 1
-    ' Position embers in a grid-like pattern
-    emberX% = (j% Mod 4) * (screenW% \ 4) + (screenW% \ 8)
-    emberY% = (j% \ 4) * (screenH% \ 3) + (screenH% \ 6)
+    For j% = 0 To numEmbers% - 1
+      ' Position embers in a grid-like pattern
+      emberX% = (j% Mod 4) * (screenW% \ 4) + (screenW% \ 8)
+      emberY% = (j% \ 4) * (screenH% \ 3) + (screenH% \ 6)
 
-    ' Each ember breathes with a slight phase offset
-    ledPhase% = (breathPhase% \ 2 + j% * 30) Mod 360
-    emberBright% = Sin(Rad(ledPhase%)) * 60 + 160
-    If emberBright% < 100 Then emberBright% = 100
-    If emberBright% > 220 Then emberBright% = 220
+      ' Each ember breathes with a slight phase offset
+      ledPhase% = (breathPhase% \ 2 + j% * 30) Mod 360
+      emberBright% = Sin(Rad(ledPhase%)) * 60 + 160
+      If emberBright% < 100 Then emberBright% = 100
+      If emberBright% > 220 Then emberBright% = 220
 
-    ' Gentle size variation with breathing
-    emberSize% = (emberBright% \ 20) + 8
+      ' Gentle size variation with breathing
+      emberSize% = (emberBright% \ 20) + 8
 
-    ' Warm ember colors only - deep red to soft orange
-    rCol% = 220
-    gCol% = Int((emberBright% - 100) \ 3)
-    If gCol% > 60 Then gCol% = 60
-    bCol% = 0
+      ' Warm ember colors only - deep red to soft orange
+      rCol% = 220
+      gCol% = Int((emberBright% - 100) \ 3)
+      If gCol% > 60 Then gCol% = 60
+      bCol% = 0
 
-    rAdj% = (rCol% * brightness%) \ 255
-    gAdj% = (gCol% * brightness%) \ 255
-    bAdj% = (bCol% * brightness%) \ 255
+      rAdj% = (rCol% * brightness%) \ 255
+      gAdj% = (gCol% * brightness%) \ 255
+      bAdj% = (bCol% * brightness%) \ 255
 
-    Circle emberX%, emberY%, emberSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
-  Next j%
+      Circle emberX%, emberY%, emberSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next j%
+  End If
 
   ' Update LEDs with smooth breathing
   For i% = 0 To LEDCOUNT - 1
@@ -674,9 +698,6 @@ End Sub
 '-------------------------------------------------------------------
 
 Sub CandleCluster
-  ' Clear screen each frame so flames can shrink properly
-  Box 0, 0, screenW%, screenH%, 1, RGB(15, 10, 5)
-
   ' 4 candles, each gets 2 LEDs
   numCandles% = 4
 
@@ -691,32 +712,39 @@ Sub CandleCluster
       candleTarget%(candleIdx%) = 140 + Int(Rnd * 115)  ' Wider range: 140-255
     End If
 
-    ' Draw candle body on screen
-    candleW% = screenW% \ 6
-    candleH% = screenH% \ 3
-    candleX% = (candleIdx% * screenW% \ 4) + (screenW% \ 8) - (candleW% \ 2)
-    candleY% = screenH% - candleH%
+    If showScreen% = 1 Then
+      ' Clear screen each frame so flames can shrink properly (only on first candle)
+      If candleIdx% = 0 Then
+        Box 0, 0, screenW%, screenH%, 1, RGB(15, 10, 5)
+      End If
 
-    ' Candle wax (cream color)
-    Box candleX%, candleY%, candleW%, candleH%, 1, RGB(80, 70, 40)
+      ' Draw candle body on screen
+      candleW% = screenW% \ 6
+      candleH% = screenH% \ 3
+      candleX% = (candleIdx% * screenW% \ 4) + (screenW% \ 8) - (candleW% \ 2)
+      candleY% = screenH% - candleH%
 
-    ' Flame (teardrop shape - approximate with boxes) - dramatic height changes
-    flameH% = (candleFlicker%(candleIdx%) \ 3) + 5  ' Even bigger variation: 51-90 pixels
-    flameY% = candleY% - flameH%
+      ' Candle wax (cream color)
+      Box candleX%, candleY%, candleW%, candleH%, 1, RGB(80, 70, 40)
 
-    ' Bright yellow-orange flame with dramatic color variation
-    intensity% = candleFlicker%(candleIdx%)
-    rAdj% = (255 * brightness%) \ 255
-    gCol% = 80 + Int((intensity% - 140) * 1.5)  ' Wider green range
-    If gCol% < 60 Then gCol% = 60
-    If gCol% > 255 Then gCol% = 255
-    gAdj% = (gCol% * intensity% * brightness%) \ 65025
-    bAdj% = 0
+      ' Flame (teardrop shape - approximate with boxes) - dramatic height changes
+      flameH% = (candleFlicker%(candleIdx%) \ 3) + 5  ' Even bigger variation: 51-90 pixels
+      flameY% = candleY% - flameH%
 
-    ' Draw flame with filled boxes for visibility
-    For shrink% = 0 To Min((candleW% \ 4), (flameH% \ 2)) Step 1
-      Box candleX% + (candleW% \ 4) + shrink%, flameY% + shrink%, (candleW% \ 2) - (shrink% * 2), flameH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
-    Next shrink%
+      ' Bright yellow-orange flame with dramatic color variation
+      intensity% = candleFlicker%(candleIdx%)
+      rAdj% = (255 * brightness%) \ 255
+      gCol% = 80 + Int((intensity% - 140) * 1.5)  ' Wider green range
+      If gCol% < 60 Then gCol% = 60
+      If gCol% > 255 Then gCol% = 255
+      gAdj% = (gCol% * intensity% * brightness%) \ 65025
+      bAdj% = 0
+
+      ' Draw flame with filled boxes for visibility
+      For shrink% = 0 To Min((candleW% \ 4), (flameH% \ 2)) Step 1
+        Box candleX% + (candleW% \ 4) + shrink%, flameY% + shrink%, (candleW% \ 2) - (shrink% * 2), flameH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+      Next shrink%
+    End If
 
     ' Update 2 LEDs for this candle
     intensity% = candleFlicker%(candleIdx%)
@@ -749,8 +777,11 @@ End Sub
 '-------------------------------------------------------------------
 
 Sub FireWave
-  ' Clear background
-  Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 0)
+  If showScreen% = 1 Then
+    ' Clear background
+    Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 0)
+    boxW% = screenW% \ LEDCOUNT
+  End If
 
   ' Move wave position
   wavePos% = wavePos% + waveDir%
@@ -764,8 +795,6 @@ Sub FireWave
   End If
 
   ' Draw wave on screen and LEDs
-  boxW% = screenW% \ LEDCOUNT
-
   For i% = 0 To LEDCOUNT - 1
     ' Calculate distance from wave center
     dist% = Abs(i% - wavePos%)
@@ -805,13 +834,15 @@ Sub FireWave
     b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
 
     ' Draw on screen
-    boxX% = i% * boxW%
-    boxH% = (waveIntensity% * screenH%) \ 255
-    boxY% = screenH% - boxH%
+    If showScreen% = 1 Then
+      boxX% = i% * boxW%
+      boxH% = (waveIntensity% * screenH%) \ 255
+      boxY% = screenH% - boxH%
 
-    For shrink% = 0 To Min(boxW% \ 2, boxH% \ 2) Step 1
-      Box boxX% + shrink%, boxY% + shrink%, boxW% - (shrink% * 2), boxH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
-    Next shrink%
+      For shrink% = 0 To Min(boxW% \ 2, boxH% \ 2) Step 1
+        Box boxX% + shrink%, boxY% + shrink%, boxW% - (shrink% * 2), boxH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+      Next shrink%
+    End If
   Next i%
 End Sub
 
@@ -825,11 +856,11 @@ Sub SunsetGlow
   sunsetOffset% = sunsetOffset% + 1
   If sunsetOffset% > 360 Then sunsetOffset% = 0
 
-  ' Clear to dark
-  Box 0, 0, screenW%, screenH%, 1, RGB(5, 0, 0)
-
-  ' Draw gradient across LEDs and screen
-  boxW% = screenW% \ LEDCOUNT
+  If showScreen% = 1 Then
+    ' Clear to dark
+    Box 0, 0, screenW%, screenH%, 1, RGB(5, 0, 0)
+    boxW% = screenW% \ LEDCOUNT
+  End If
 
   For i% = 0 To LEDCOUNT - 1
     ' Calculate color based on position and offset
@@ -866,11 +897,13 @@ Sub SunsetGlow
     ' Set LED
     b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
 
-    ' Draw filled bar on screen
-    boxX% = i% * boxW%
-    For shrink% = 0 To boxW% \ 2 Step 1
-      Box boxX% + shrink%, shrink%, boxW% - (shrink% * 2), screenH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
-    Next shrink%
+    If showScreen% = 1 Then
+      ' Draw filled bar on screen
+      boxX% = i% * boxW%
+      For shrink% = 0 To boxW% \ 2 Step 1
+        Box boxX% + shrink%, shrink%, boxW% - (shrink% * 2), screenH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+      Next shrink%
+    End If
   Next i%
 End Sub
 
@@ -880,8 +913,10 @@ End Sub
 '-------------------------------------------------------------------
 
 Sub SmolderingLogs
-  ' Very dark background
-  Box 0, 0, screenW%, screenH%, 1, RGB(8, 4, 0)
+  If showScreen% = 1 Then
+    ' Very dark background
+    Box 0, 0, screenW%, screenH%, 1, RGB(8, 4, 0)
+  End If
 
   ' Update each log/ember
   For i% = 0 To LEDCOUNT - 1
@@ -923,13 +958,15 @@ Sub SmolderingLogs
 
     b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
 
-    ' Draw small hot spots on screen
-    If logBrightness%(i%) > 40 Then
-      spotX% = (i% * screenW% \ LEDCOUNT) + (screenW% \ (LEDCOUNT * 2))
-      spotY% = screenH% \ 2 + Int(Rnd * (screenH% \ 4)) - (screenH% \ 8)
-      spotSize% = (logBrightness%(i%) \ 20) + 3
+    If showScreen% = 1 Then
+      ' Draw small hot spots on screen
+      If logBrightness%(i%) > 40 Then
+        spotX% = (i% * screenW% \ LEDCOUNT) + (screenW% \ (LEDCOUNT * 2))
+        spotY% = screenH% \ 2 + Int(Rnd * (screenH% \ 4)) - (screenH% \ 8)
+        spotSize% = (logBrightness%(i%) \ 20) + 3
 
-      Circle spotX%, spotY%, spotSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+        Circle spotX%, spotY%, spotSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+      End If
     End If
   Next i%
 End Sub
@@ -940,40 +977,42 @@ End Sub
 '-------------------------------------------------------------------
 
 Sub FireSpiral
-  ' Dark background
-  Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 5)
-
   ' Rotate spiral
   spiralAngle% = spiralAngle% + 2
   If spiralAngle% > 359 Then spiralAngle% = 0
 
-  ' Draw spiral on screen
-  centerX% = screenW% \ 2
-  centerY% = screenH% \ 2
-  numRings% = 8
+  If showScreen% = 1 Then
+    ' Dark background
+    Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 5)
 
-  For ringIdx% = 0 To numRings% - 1
-    radius% = (ringIdx% + 1) * (Min(screenW%, screenH%) \ (numRings% * 2))
-    angle% = (spiralAngle% + ringIdx% * 45) Mod 360
+    ' Draw spiral on screen
+    centerX% = screenW% \ 2
+    centerY% = screenH% \ 2
+    numRings% = 8
 
-    spiralX% = centerX% + Int(Cos(Rad(angle%)) * radius%)
-    spiralY% = centerY% + Int(Sin(Rad(angle%)) * radius%)
+    For ringIdx% = 0 To numRings% - 1
+      radius% = (ringIdx% + 1) * (Min(screenW%, screenH%) \ (numRings% * 2))
+      angle% = (spiralAngle% + ringIdx% * 45) Mod 360
 
-    ' Color based on ring
-    intensity% = 200 - (ringIdx% * 20)
-    If intensity% < 100 Then intensity% = 100
+      spiralX% = centerX% + Int(Cos(Rad(angle%)) * radius%)
+      spiralY% = centerY% + Int(Sin(Rad(angle%)) * radius%)
 
-    rCol% = 255
-    gCol% = 150 - (ringIdx% * 15)
-    If gCol% < 0 Then gCol% = 0
-    bCol% = 0
+      ' Color based on ring
+      intensity% = 200 - (ringIdx% * 20)
+      If intensity% < 100 Then intensity% = 100
 
-    rAdj% = (rCol% * intensity% * brightness%) \ 65025
-    gAdj% = (gCol% * intensity% * brightness%) \ 65025
-    bAdj% = 0
+      rCol% = 255
+      gCol% = 150 - (ringIdx% * 15)
+      If gCol% < 0 Then gCol% = 0
+      bCol% = 0
 
-    Circle spiralX%, spiralY%, 8 - ringIdx%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
-  Next ringIdx%
+      rAdj% = (rCol% * intensity% * brightness%) \ 65025
+      gAdj% = (gCol% * intensity% * brightness%) \ 65025
+      bAdj% = 0
+
+      Circle spiralX%, spiralY%, 8 - ringIdx%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next ringIdx%
+  End If
 
   ' Update LEDs in rotating pattern
   For i% = 0 To LEDCOUNT - 1

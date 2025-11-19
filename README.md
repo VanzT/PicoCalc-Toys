@@ -68,3 +68,7 @@ xfer.bas - a file transfer program to copy files between 2 PicoCalc devices.
 Same notes as bkgmn-w.bas.
 It uses UDP, so you know it's rock solid!  /s  Actually, it works pretty
 well for what it is.
+
+*** NOTE ***
+The LED strip I use, I got from Amazon and is called, "8 X WS2812 8 RGB LED Stick 5050 RGB LED with Integrated Drivers for Arduino Raspberry Pi DC5V"
+Currently at: https://a.co/d/buNRGLH 

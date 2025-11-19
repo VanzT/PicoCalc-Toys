@@ -43,6 +43,21 @@ Dim shrink%                 ' For filled box effect
 Dim emberFrameCount%        ' Frame counter for slow ember pulsing
 Dim breathPhase%            ' Phase counter for breathing effect
 Dim ledPhase%               ' LED phase for breathing calculations
+Dim candleFlicker%(3)       ' Flicker intensity for each candle
+Dim candleTarget%(3)        ' Target flicker for each candle
+Dim wavePos%                ' Position of fire wave
+Dim waveDir%                ' Direction of fire wave
+Dim sunsetOffset%           ' Gradient offset for sunset
+Dim logBrightness%(LEDCOUNT - 1)  ' Brightness of each log/ember
+Dim logFadeTimer%(LEDCOUNT - 1)   ' Fade timer for each log
+Dim spiralAngle%            ' Rotation angle for spiral
+Dim numCandles%, candleIdx%, candleX%, candleY%, candleW%, candleH%
+Dim flameH%, flameY%
+Dim dist%, waveIntensity%
+Dim colorPos%, gradientPhase%
+Dim spotX%, spotY%, spotSize%
+Dim centerX%, centerY%, numRings%, ringIdx%, angle%, radius%
+Dim spiralX%, spiralY%
 
 '-------------------------------------------------------------------
 ' INITIAL SETUP
@@ -52,6 +67,10 @@ effectMode% = 0    ' Start with first effect
 brightness% = 200  ' Start at 78% brightness
 emberFrameCount% = 0
 breathPhase% = 0
+wavePos% = 0
+waveDir% = 1
+sunsetOffset% = 0
+spiralAngle% = 0
 
 ' Get screen dimensions
 screenW% = MM.HRes
@@ -65,6 +84,14 @@ For i% = 0 To LEDCOUNT - 1
   pulseVal%(i%) = Int(Rnd * 360)
   emberColorDuration%(i%) = 0
   emberColorChoice%(i%) = 0
+  logBrightness%(i%) = 0
+  logFadeTimer%(i%) = 0
+Next i%
+
+' Initialize candle flicker
+For i% = 0 To 3
+  candleFlicker%(i%) = 200
+  candleTarget%(i%) = 200
 Next i%
 
 '-------------------------------------------------------------------
@@ -137,6 +164,16 @@ Sub RunFireVisualization
         GlowingEmbers
       Case 5
         BreathingEmbers
+      Case 6
+        CandleCluster
+      Case 7
+        FireWave
+      Case 8
+        SunsetGlow
+      Case 9
+        SmolderingLogs
+      Case 10
+        FireSpiral
     End Select
 
     ' Update the LED strip
@@ -148,12 +185,12 @@ Sub RunFireVisualization
       Select Case k$
         Case Chr$(130)   ' LEFT button
           effectMode% = effectMode% - 1
-          If effectMode% < 0 Then effectMode% = 5
+          If effectMode% < 0 Then effectMode% = 10
           Pause 200  ' Debounce
 
         Case Chr$(131)   ' RIGHT button
           effectMode% = effectMode% + 1
-          If effectMode% > 5 Then effectMode% = 0
+          If effectMode% > 10 Then effectMode% = 0
           Pause 200  ' Debounce
 
         Case Chr$(128)   ' UP button
@@ -625,6 +662,317 @@ Sub BreathingEmbers
 
     rAdj% = (rCol% * brightness%) \ 255
     gAdj% = (gCol% * brightness%) \ 255
+    bAdj% = 0
+
+    b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+  Next i%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 6: Candle Cluster
+' Intimate candlelight with gentle flickering
+'-------------------------------------------------------------------
+
+Sub CandleCluster
+  ' Draw dark background
+  Box 0, 0, screenW%, screenH%, 1, RGB(15, 10, 5)
+
+  ' 4 candles, each gets 2 LEDs
+  numCandles% = 4
+
+  For candleIdx% = 0 To numCandles% - 1
+    ' Smooth flicker transition
+    If candleFlicker%(candleIdx%) < candleTarget%(candleIdx%) Then
+      candleFlicker%(candleIdx%) = candleFlicker%(candleIdx%) + 2
+    ElseIf candleFlicker%(candleIdx%) > candleTarget%(candleIdx%) Then
+      candleFlicker%(candleIdx%) = candleFlicker%(candleIdx%) - 2
+    Else
+      ' Reached target, set new gentle target
+      candleTarget%(candleIdx%) = 180 + Int(Rnd * 60)
+    End If
+
+    ' Draw candle body on screen
+    candleW% = screenW% \ 6
+    candleH% = screenH% \ 3
+    candleX% = (candleIdx% * screenW% \ 4) + (screenW% \ 8) - (candleW% \ 2)
+    candleY% = screenH% - candleH%
+
+    ' Candle wax (cream color)
+    Box candleX%, candleY%, candleW%, candleH%, 1, RGB(80, 70, 40)
+
+    ' Flame (teardrop shape - approximate with boxes)
+    flameH% = (candleFlicker%(candleIdx%) \ 10) + 15
+    flameY% = candleY% - flameH%
+
+    ' Bright yellow-orange flame
+    rAdj% = (255 * brightness%) \ 255
+    gAdj% = ((180 + (candleFlicker%(candleIdx%) \ 4)) * brightness%) \ 255
+    bAdj% = 0
+
+    Box candleX% + (candleW% \ 4), flameY%, candleW% \ 2, flameH%, 1, RGB(rAdj%, gAdj%, bAdj%)
+
+    ' Update 2 LEDs for this candle
+    intensity% = candleFlicker%(candleIdx%)
+
+    ' Warm candle flame color
+    rCol% = 255
+    gCol% = 180 + (intensity% \ 4)
+    If gCol% > 255 Then gCol% = 255
+    bCol% = 0
+
+    rAdj% = (rCol% * brightness%) \ 255
+    gAdj% = (gCol% * brightness%) \ 255
+    bAdj% = 0
+
+    ' Set both LEDs for this candle
+    b%(candleIdx% * 2) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+    b%(candleIdx% * 2 + 1) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+  Next candleIdx%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 7: Fire Wave
+' Hypnotic rolling wave of fire
+'-------------------------------------------------------------------
+
+Sub FireWave
+  ' Clear background
+  Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 0)
+
+  ' Move wave position
+  wavePos% = wavePos% + waveDir%
+  If wavePos% >= LEDCOUNT - 1 Then
+    wavePos% = LEDCOUNT - 1
+    waveDir% = -1
+  End If
+  If wavePos% <= 0 Then
+    wavePos% = 0
+    waveDir% = 1
+  End If
+
+  ' Draw wave on screen and LEDs
+  boxW% = screenW% \ LEDCOUNT
+
+  For i% = 0 To LEDCOUNT - 1
+    ' Calculate distance from wave center
+    dist% = Abs(i% - wavePos%)
+
+    ' Wave intensity falls off with distance
+    If dist% = 0 Then
+      waveIntensity% = 255
+    ElseIf dist% = 1 Then
+      waveIntensity% = 180
+    ElseIf dist% = 2 Then
+      waveIntensity% = 100
+    Else
+      waveIntensity% = 30
+    End If
+
+    ' Fire colors based on intensity
+    If waveIntensity% > 200 Then
+      rCol% = 255 : gCol% = 255 : bCol% = 100  ' Bright yellow-white
+    ElseIf waveIntensity% > 150 Then
+      rCol% = 255 : gCol% = 200 : bCol% = 0    ' Yellow-orange
+    ElseIf waveIntensity% > 80 Then
+      rCol% = 255 : gCol% = 100 : bCol% = 0    ' Orange
+    Else
+      rCol% = 200 : gCol% = 30 : bCol% = 0     ' Deep red
+    End If
+
+    ' Apply intensity and brightness
+    rCol% = (rCol% * waveIntensity%) \ 255
+    gCol% = (gCol% * waveIntensity%) \ 255
+    bCol% = (bCol% * waveIntensity%) \ 255
+
+    rAdj% = (rCol% * brightness%) \ 255
+    gAdj% = (gCol% * brightness%) \ 255
+    bAdj% = (bCol% * brightness%) \ 255
+
+    ' Set LED
+    b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+
+    ' Draw on screen
+    boxX% = i% * boxW%
+    boxH% = (waveIntensity% * screenH%) \ 255
+    boxY% = screenH% - boxH%
+
+    For shrink% = 0 To Min(boxW% \ 2, boxH% \ 2) Step 1
+      Box boxX% + shrink%, boxY% + shrink%, boxW% - (shrink% * 2), boxH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next shrink%
+  Next i%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 8: Sunset Glow
+' Peaceful gradient that shifts over time
+'-------------------------------------------------------------------
+
+Sub SunsetGlow
+  ' Slowly shift gradient
+  sunsetOffset% = sunsetOffset% + 1
+  If sunsetOffset% > 360 Then sunsetOffset% = 0
+
+  ' Clear to dark
+  Box 0, 0, screenW%, screenH%, 1, RGB(5, 0, 0)
+
+  ' Draw gradient across LEDs and screen
+  boxW% = screenW% \ LEDCOUNT
+
+  For i% = 0 To LEDCOUNT - 1
+    ' Calculate color based on position and offset
+    colorPos% = (i% * 360 \ LEDCOUNT + sunsetOffset%) Mod 360
+
+    ' Use sine wave for smooth gradient
+    gradientPhase% = Sin(Rad(colorPos%)) * 127 + 128
+
+    ' Sunset colors: deep red to orange to yellow
+    If gradientPhase% < 85 Then
+      ' Deep red
+      rCol% = 180 + gradientPhase%
+      gCol% = 0
+      bCol% = 0
+    ElseIf gradientPhase% < 170 Then
+      ' Red to orange
+      rCol% = 255
+      gCol% = (gradientPhase% - 85) * 2
+      bCol% = 0
+    Else
+      ' Orange to yellow
+      rCol% = 255
+      gCol% = 170 + (gradientPhase% - 170)
+      bCol% = 0
+    End If
+
+    rAdj% = (rCol% * brightness%) \ 255
+    gAdj% = (gCol% * brightness%) \ 255
+    bAdj% = (bCol% * brightness%) \ 255
+
+    ' Set LED
+    b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+
+    ' Draw filled bar on screen
+    boxX% = i% * boxW%
+    For shrink% = 0 To boxW% \ 2 Step 1
+      Box boxX% + shrink%, shrink%, boxW% - (shrink% * 2), screenH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next shrink%
+  Next i%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 9: Smoldering Logs
+' Subtle, dying fire with occasional flares
+'-------------------------------------------------------------------
+
+Sub SmolderingLogs
+  ' Very dark background
+  Box 0, 0, screenW%, screenH%, 1, RGB(8, 4, 0)
+
+  ' Update each log/ember
+  For i% = 0 To LEDCOUNT - 1
+    ' Decrement fade timer
+    logFadeTimer%(i%) = logFadeTimer%(i%) - 1
+
+    If logFadeTimer%(i%) <= 0 Then
+      ' Occasionally flare up (10% chance)
+      If Rnd < 0.1 Then
+        logBrightness%(i%) = 180 + Int(Rnd * 75)
+        logFadeTimer%(i%) = 20 + Int(Rnd * 40)
+      Else
+        ' Stay dim
+        logBrightness%(i%) = 20 + Int(Rnd * 30)
+        logFadeTimer%(i%) = 10 + Int(Rnd * 20)
+      End If
+    End If
+
+    ' Slowly fade current brightness
+    If logBrightness%(i%) > 25 Then
+      logBrightness%(i%) = logBrightness%(i%) - 2
+    End If
+
+    ' Set color (deep red to orange based on brightness)
+    If logBrightness%(i%) > 150 Then
+      rCol% = 255 : gCol% = 100 : bCol% = 0  ' Bright orange
+    ElseIf logBrightness%(i%) > 80 Then
+      rCol% = 220 : gCol% = 40 : bCol% = 0   ' Red-orange
+    Else
+      rCol% = 150 : gCol% = 0 : bCol% = 0    ' Deep red
+    End If
+
+    rAdj% = (rCol% * logBrightness%(i%)) \ 255
+    gAdj% = (gCol% * logBrightness%(i%)) \ 255
+    bAdj% = 0
+
+    rAdj% = (rAdj% * brightness%) \ 255
+    gAdj% = (gAdj% * brightness%) \ 255
+
+    b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+
+    ' Draw small hot spots on screen
+    If logBrightness%(i%) > 40 Then
+      spotX% = (i% * screenW% \ LEDCOUNT) + (screenW% \ (LEDCOUNT * 2))
+      spotY% = screenH% \ 2 + Int(Rnd * (screenH% \ 4)) - (screenH% \ 8)
+      spotSize% = (logBrightness%(i%) \ 20) + 3
+
+      Circle spotX%, spotY%, spotSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+    End If
+  Next i%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 10: Fire Spiral
+' Mesmerizing rotating fire pattern
+'-------------------------------------------------------------------
+
+Sub FireSpiral
+  ' Dark background
+  Box 0, 0, screenW%, screenH%, 1, RGB(10, 5, 5)
+
+  ' Rotate spiral
+  spiralAngle% = spiralAngle% + 2
+  If spiralAngle% > 359 Then spiralAngle% = 0
+
+  ' Draw spiral on screen
+  centerX% = screenW% \ 2
+  centerY% = screenH% \ 2
+  numRings% = 8
+
+  For ringIdx% = 0 To numRings% - 1
+    radius% = (ringIdx% + 1) * (Min(screenW%, screenH%) \ (numRings% * 2))
+    angle% = (spiralAngle% + ringIdx% * 45) Mod 360
+
+    spiralX% = centerX% + Int(Cos(Rad(angle%)) * radius%)
+    spiralY% = centerY% + Int(Sin(Rad(angle%)) * radius%)
+
+    ' Color based on ring
+    intensity% = 200 - (ringIdx% * 20)
+    If intensity% < 100 Then intensity% = 100
+
+    rCol% = 255
+    gCol% = 150 - (ringIdx% * 15)
+    If gCol% < 0 Then gCol% = 0
+    bCol% = 0
+
+    rAdj% = (rCol% * intensity% * brightness%) \ 65025
+    gAdj% = (gCol% * intensity% * brightness%) \ 65025
+    bAdj% = 0
+
+    Circle spiralX%, spiralY%, 8 - ringIdx%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+  Next ringIdx%
+
+  ' Update LEDs in rotating pattern
+  For i% = 0 To LEDCOUNT - 1
+    ledPhase% = (spiralAngle% + i% * 45) Mod 360
+
+    ' Brightness follows sine wave
+    intensity% = Sin(Rad(ledPhase%)) * 100 + 155
+
+    ' Warm fire colors
+    rCol% = 255
+    gCol% = 100 + Int((Sin(Rad(ledPhase%)) + 1) * 60)
+    bCol% = 0
+
+    rAdj% = (rCol% * intensity% * brightness%) \ 65025
+    gAdj% = (gCol% * intensity% * brightness%) \ 65025
     bAdj% = 0
 
     b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%

@@ -4,6 +4,8 @@ With a generous helping of AI, I present:
 
 alien.bas - weak attempt at the motion tracker display from Alien
 
+atry.bas - old-school artillery game for 2 player only.  
+
 bio.bas - remember the Biorhythm craze in the mid to late 70's?   I do,
 because I'm old. This takes the snake oil psudoscience into the new 
 millenium much to the delight of nobody.  Self-explanatory (or just 
@@ -24,6 +26,13 @@ see bkgmn-w.bas notes above for same OPTIONs that must be set
 bsg1.bas - Battlestar Galactica original series.  Attempt at tactical radar display
 Could be worse.
 
+dksy.bas - Apollo 11 era DSKY homage.  Accepts the following:
+V21N36 - Set the time in 24-hour format
+V16N36 - Show the time
+V35N00 - Lamp test
+V16N36 - Apollo 11 landing simulation (requires the a11_descent.flac file to be
+in the same location as the .bas file)
+
 ghost.bas - shove a wire in GPIO28 and detect 'ghosts'!  Just a dumb program that 
 reads from analog input 28 that isn't grounded.  Meaning, it is reading ambient 
 electrical energy around the device.  Press 1 or 2 to switch between different
@@ -31,6 +40,9 @@ methods of recording the data.
 
 matrix.bas - The Matrix style animation.  I'm quite pleased with the random white
 flashes at the head of some drops
+
+menu.bas - taken from somewhere and modified to my aesthetic tastes. As soon as I 
+can find it again, I will give poper credit.
 
 muthur.bas - very lame Alien-ish animation.  Terrible, is a kind description
 
@@ -42,6 +54,9 @@ Same notes as bkgmn-w.bas.
 rgb.bas - I put an 8 RGB LED strip inside my pico and this makes neat effects.
 Totally stolen from https://steinlaus.de/rgb-led-stick-fuer-den-picocalc/ and 
 they deserve all credit.
+
+stars.bas - modified from the great https://github.com/guidouil/PicoCalcStuffs, 
+I added support for the 8 LED strip I installed inside my PicoCalc for kicks.
 
 sysinfo.bas - I just wanted to know my IP address without a lot of typing.  So 
 it is with a few extra things to make it seem more fancy than it really is.

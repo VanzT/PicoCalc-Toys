@@ -674,21 +674,21 @@ End Sub
 '-------------------------------------------------------------------
 
 Sub CandleCluster
-  ' Draw dark background
+  ' Clear screen each frame so flames can shrink properly
   Box 0, 0, screenW%, screenH%, 1, RGB(15, 10, 5)
 
   ' 4 candles, each gets 2 LEDs
   numCandles% = 4
 
   For candleIdx% = 0 To numCandles% - 1
-    ' Smooth flicker transition
+    ' Smooth flicker transition - faster and more dynamic
     If candleFlicker%(candleIdx%) < candleTarget%(candleIdx%) Then
-      candleFlicker%(candleIdx%) = candleFlicker%(candleIdx%) + 2
+      candleFlicker%(candleIdx%) = candleFlicker%(candleIdx%) + 8
     ElseIf candleFlicker%(candleIdx%) > candleTarget%(candleIdx%) Then
-      candleFlicker%(candleIdx%) = candleFlicker%(candleIdx%) - 2
+      candleFlicker%(candleIdx%) = candleFlicker%(candleIdx%) - 8
     Else
-      ' Reached target, set new gentle target
-      candleTarget%(candleIdx%) = 180 + Int(Rnd * 60)
+      ' Reached target, set new varied target
+      candleTarget%(candleIdx%) = 140 + Int(Rnd * 115)  ' Wider range: 140-255
     End If
 
     ' Draw candle body on screen
@@ -700,29 +700,42 @@ Sub CandleCluster
     ' Candle wax (cream color)
     Box candleX%, candleY%, candleW%, candleH%, 1, RGB(80, 70, 40)
 
-    ' Flame (teardrop shape - approximate with boxes)
-    flameH% = (candleFlicker%(candleIdx%) \ 10) + 15
+    ' Flame (teardrop shape - approximate with boxes) - dramatic height changes
+    flameH% = (candleFlicker%(candleIdx%) \ 3) + 5  ' Even bigger variation: 51-90 pixels
     flameY% = candleY% - flameH%
 
-    ' Bright yellow-orange flame
+    ' Bright yellow-orange flame with dramatic color variation
+    intensity% = candleFlicker%(candleIdx%)
     rAdj% = (255 * brightness%) \ 255
-    gAdj% = ((180 + (candleFlicker%(candleIdx%) \ 4)) * brightness%) \ 255
+    gCol% = 80 + Int((intensity% - 140) * 1.5)  ' Wider green range
+    If gCol% < 60 Then gCol% = 60
+    If gCol% > 255 Then gCol% = 255
+    gAdj% = (gCol% * intensity% * brightness%) \ 65025
     bAdj% = 0
 
-    Box candleX% + (candleW% \ 4), flameY%, candleW% \ 2, flameH%, 1, RGB(rAdj%, gAdj%, bAdj%)
+    ' Draw flame with filled boxes for visibility
+    For shrink% = 0 To Min((candleW% \ 4), (flameH% \ 2)) Step 1
+      Box candleX% + (candleW% \ 4) + shrink%, flameY% + shrink%, (candleW% \ 2) - (shrink% * 2), flameH% - (shrink% * 2), 1, RGB(rAdj%, gAdj%, bAdj%)
+    Next shrink%
 
     ' Update 2 LEDs for this candle
     intensity% = candleFlicker%(candleIdx%)
 
-    ' Warm candle flame color
+    ' Warm candle flame color - dramatic variation
     rCol% = 255
-    gCol% = 180 + (intensity% \ 4)
+    gCol% = 80 + Int((intensity% - 140) * 1.5)  ' Match screen flame
+    If gCol% < 60 Then gCol% = 60
     If gCol% > 255 Then gCol% = 255
     bCol% = 0
 
-    rAdj% = (rCol% * brightness%) \ 255
-    gAdj% = (gCol% * brightness%) \ 255
+    ' Apply intensity variation - more dramatic brightness changes
+    rAdj% = (rCol% * intensity% * brightness%) \ 65025
+    gAdj% = (gCol% * intensity% * brightness%) \ 65025
     bAdj% = 0
+
+    ' Boost low values to ensure visibility
+    If rAdj% < 40 Then rAdj% = 40
+    If gAdj% < 20 Then gAdj% = 20
 
     ' Set both LEDs for this candle
     b%(candleIdx% * 2) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
@@ -828,18 +841,21 @@ Sub SunsetGlow
     ' Sunset colors: deep red to orange to yellow
     If gradientPhase% < 85 Then
       ' Deep red
-      rCol% = 180 + gradientPhase%
+      rCol% = 180 + Int(gradientPhase% * 0.88)  ' Scale to max 255
+      If rCol% > 255 Then rCol% = 255
       gCol% = 0
       bCol% = 0
     ElseIf gradientPhase% < 170 Then
       ' Red to orange
       rCol% = 255
       gCol% = (gradientPhase% - 85) * 2
+      If gCol% > 255 Then gCol% = 255
       bCol% = 0
     Else
       ' Orange to yellow
       rCol% = 255
       gCol% = 170 + (gradientPhase% - 170)
+      If gCol% > 255 Then gCol% = 255
       bCol% = 0
     End If
 

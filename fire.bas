@@ -21,6 +21,8 @@ Dim b%(LEDCOUNT - 1)        ' LED buffer (24-bit RGB packed)
 Dim heights%(LEDCOUNT - 1)  ' Flame heights for flicker effect
 Dim targets%(LEDCOUNT - 1)  ' Target heights for smooth transitions
 Dim pulseVal%(LEDCOUNT - 1) ' Pulse values for ember effect
+Dim emberColorDuration%(LEDCOUNT - 1) ' How long each ember keeps its color
+Dim emberColorChoice%(LEDCOUNT - 1) ' Current color for each ember
 
 Dim i%, j%, k$
 Dim effectMode%             ' Current fire effect (0-3)
@@ -61,6 +63,8 @@ For i% = 0 To LEDCOUNT - 1
   heights%(i%) = 0
   targets%(i%) = 0
   pulseVal%(i%) = Int(Rnd * 360)
+  emberColorDuration%(i%) = 0
+  emberColorChoice%(i%) = 0
 Next i%
 
 '-------------------------------------------------------------------
@@ -523,17 +527,23 @@ Sub GlowingEmbers
     If intensity% < 55 Then intensity% = 55
     If intensity% > 255 Then intensity% = 255
 
-    ' Deep red to orange embers
-    colorChoice% = Int(Rnd * 100)
+    ' Color changes with variable duration
+    emberColorDuration%(i%) = emberColorDuration%(i%) - 1
+    If emberColorDuration%(i%) <= 0 Then
+      ' Pick new color and set random duration (3-12 frames)
+      emberColorChoice%(i%) = Int(Rnd * 100)
+      emberColorDuration%(i%) = Int(3 + Rnd * 10)
+    End If
 
-    If colorChoice% < 70 Then
-      ' Deep red
+    ' Deep red to orange embers (brighter orange now only 2% chance)
+    If emberColorChoice%(i%) < 70 Then
+      ' Deep red (70% of the time)
       rCol% = 200 : gCol% = 0 : bCol% = 0
-    ElseIf colorChoice% < 95 Then
-      ' Red-orange
+    ElseIf emberColorChoice%(i%) < 98 Then
+      ' Red-orange (28% of the time)
       rCol% = 255 : gCol% = 60 : bCol% = 0
     Else
-      ' Brighter orange
+      ' Brighter orange (2% of the time)
       rCol% = 255 : gCol% = 127 : bCol% = 0
     End If
 

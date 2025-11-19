@@ -30,7 +30,8 @@ dksy.bas - Apollo 11 era DSKY homage.  Accepts the following:
 V21N36 - Set the time in 24-hour format
 V16N36 - Show the time
 V35N00 - Lamp test
-V16N36 - Apollo 11 landing simulation (requires the flac file)
+V16N36 - Apollo 11 landing simulation (requires the a11_descent.flac file to be
+in the same location as the .bas file)
 
 ghost.bas - shove a wire in GPIO28 and detect 'ghosts'!  Just a dumb program that 
 reads from analog input 28 that isn't grounded.  Meaning, it is reading ambient 

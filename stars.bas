@@ -1,4 +1,7 @@
 ' Starfield like win95 on PicoCalc
+' credit for the original to guidouil - https://github.com/guidouil/PicoCalcStuffs
+' modified by VanzT - Oct. 2025 - https://github.com/VanzT/PicoCalc-Toys
+
 w=MM.HRES
 h=MM.VRES
 framebuffer create

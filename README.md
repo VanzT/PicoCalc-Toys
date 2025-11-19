@@ -55,6 +55,9 @@ rgb.bas - I put an 8 RGB LED strip inside my pico and this makes neat effects.
 Totally stolen from https://steinlaus.de/rgb-led-stick-fuer-den-picocalc/ and 
 they deserve all credit.
 
+stars.bas - modified from the great https://github.com/guidouil/PicoCalcStuffs, 
+I added support for the 8 LED strip I installed inside my PicoCalc for kicks.
+
 sysinfo.bas - I just wanted to know my IP address without a lot of typing.  So 
 it is with a few extra things to make it seem more fancy than it really is.
 

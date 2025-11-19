@@ -38,6 +38,9 @@ Dim numBoxes%, boxSize%     ' For random box effect
 Dim hearthX%, hearthY%, hearthW%, hearthH%  ' Fireplace dimensions
 Dim numEmbers%, emberX%, emberY%, emberSize%, emberBright%  ' Ember effect
 Dim shrink%                 ' For filled box effect
+Dim emberFrameCount%        ' Frame counter for slow ember pulsing
+Dim breathPhase%            ' Phase counter for breathing effect
+Dim ledPhase%               ' LED phase for breathing calculations
 
 '-------------------------------------------------------------------
 ' INITIAL SETUP
@@ -45,6 +48,8 @@ Dim shrink%                 ' For filled box effect
 
 effectMode% = 0    ' Start with first effect
 brightness% = 200  ' Start at 78% brightness
+emberFrameCount% = 0
+breathPhase% = 0
 
 ' Get screen dimensions
 screenW% = MM.HRes
@@ -126,6 +131,8 @@ Sub RunFireVisualization
         Fireplace
       Case 4
         GlowingEmbers
+      Case 5
+        BreathingEmbers
     End Select
 
     ' Update the LED strip
@@ -137,12 +144,12 @@ Sub RunFireVisualization
       Select Case k$
         Case Chr$(130)   ' LEFT button
           effectMode% = effectMode% - 1
-          If effectMode% < 0 Then effectMode% = 4
+          If effectMode% < 0 Then effectMode% = 5
           Pause 200  ' Debounce
 
         Case Chr$(131)   ' RIGHT button
           effectMode% = effectMode% + 1
-          If effectMode% > 4 Then effectMode% = 0
+          If effectMode% > 5 Then effectMode% = 0
           Pause 200  ' Debounce
 
         Case Chr$(128)   ' UP button
@@ -500,11 +507,16 @@ Sub GlowingEmbers
     Circle emberX%, emberY%, emberSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
   Next j%
 
-  ' Update LEDs
+  ' Update LEDs - slow, peaceful pulsing
+  emberFrameCount% = emberFrameCount% + 1
+  If emberFrameCount% > 4 Then emberFrameCount% = 0
+
   For i% = 0 To LEDCOUNT - 1
-    ' Each LED has its own pulse phase - slow pulsing
-    pulseVal%(i%) = pulseVal%(i%) + 1
-    If pulseVal%(i%) > 359 Then pulseVal%(i%) = 0
+    ' Only update pulse phase every 5th frame for very slow pulsing
+    If emberFrameCount% = 0 Then
+      pulseVal%(i%) = pulseVal%(i%) + 1
+      If pulseVal%(i%) > 359 Then pulseVal%(i%) = 0
+    End If
 
     ' Deeper, more dramatic pulsing intensity
     intensity% = Sin(Rad(pulseVal%(i%))) * 100 + 155
@@ -533,6 +545,77 @@ Sub GlowingEmbers
     rAdj% = (rCol% * brightness%) \ 255
     gAdj% = (gCol% * brightness%) \ 255
     bAdj% = (bCol% * brightness%) \ 255
+
+    b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
+  Next i%
+End Sub
+
+'-------------------------------------------------------------------
+' EFFECT 5: Breathing Embers
+' Very slow, smooth, fluid breathing/pulsating warm glow
+'-------------------------------------------------------------------
+
+Sub BreathingEmbers
+  ' Increment phase very slowly (1 degree every 2 frames)
+  breathPhase% = breathPhase% + 1
+  If breathPhase% > 719 Then breathPhase% = 0
+
+  ' Draw background (very dark)
+  Box 0, 0, screenW%, screenH%, 1, RGB(5, 2, 0)
+
+  ' Draw breathing ember circles on screen
+  numEmbers% = 12
+
+  For j% = 0 To numEmbers% - 1
+    ' Position embers in a grid-like pattern
+    emberX% = (j% Mod 4) * (screenW% \ 4) + (screenW% \ 8)
+    emberY% = (j% \ 4) * (screenH% \ 3) + (screenH% \ 6)
+
+    ' Each ember breathes with a slight phase offset
+    ledPhase% = (breathPhase% \ 2 + j% * 30) Mod 360
+    emberBright% = Sin(Rad(ledPhase%)) * 60 + 160
+    If emberBright% < 100 Then emberBright% = 100
+    If emberBright% > 220 Then emberBright% = 220
+
+    ' Gentle size variation with breathing
+    emberSize% = (emberBright% \ 20) + 8
+
+    ' Warm ember colors only - deep red to soft orange
+    rCol% = 220
+    gCol% = Int((emberBright% - 100) \ 3)
+    If gCol% > 60 Then gCol% = 60
+    bCol% = 0
+
+    rAdj% = (rCol% * brightness%) \ 255
+    gAdj% = (gCol% * brightness%) \ 255
+    bAdj% = (bCol% * brightness%) \ 255
+
+    Circle emberX%, emberY%, emberSize%, 1, 1, RGB(rAdj%, gAdj%, bAdj%)
+  Next j%
+
+  ' Update LEDs with smooth breathing
+  For i% = 0 To LEDCOUNT - 1
+    ' Each LED has phase offset for gentle wave effect
+    ledPhase% = (breathPhase% \ 2 + i% * 15) Mod 360
+
+    ' Smooth breathing intensity
+    intensity% = Sin(Rad(ledPhase%)) * 60 + 160
+    If intensity% < 100 Then intensity% = 100
+    If intensity% > 220 Then intensity% = 220
+
+    ' Warm colors - mostly deep red with hint of orange
+    rCol% = 220
+    gCol% = Int((intensity% - 100) \ 3)
+    If gCol% > 60 Then gCol% = 60
+    bCol% = 0
+
+    ' Apply intensity and brightness
+    rCol% = (rCol% * intensity%) \ 255
+    gCol% = (gCol% * intensity%) \ 255
+
+    rAdj% = (rCol% * brightness%) \ 255
+    gAdj% = (gCol% * brightness%) \ 255
+    bAdj% = 0
 
     b%(i%) = (rAdj% * &H10000) + (gAdj% * &H100) + bAdj%
   Next i%

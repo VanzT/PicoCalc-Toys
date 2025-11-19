@@ -33,6 +33,9 @@ V35N00 - Lamp test
 V16N36 - Apollo 11 landing simulation (requires the a11_descent.flac file to be
 in the same location as the .bas file)
 
+fire.bas - for the 8 LED strip and on-screen visualizations of fire. Something
+for a cold winter night to make you feel cozy.  Or just zone out to.
+
 ghost.bas - shove a wire in GPIO28 and detect 'ghosts'!  Just a dumb program that 
 reads from analog input 28 that isn't grounded.  Meaning, it is reading ambient 
 electrical energy around the device.  Press 1 or 2 to switch between different

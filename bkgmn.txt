@@ -3,6 +3,9 @@ Up/Down/Left/Right = navigate cursor/piece around the board
 Enter = pick up or drop off a piece 
 t = end turn
 b = bear off a piece
+R = resend the screen.  Use this from the device who just ended the turn.
+This is for when a device fails to notify the next player that is is their turn.
+Note that this is Shift-r
 
 Notes:
 - cursor is red when not holiding a piece

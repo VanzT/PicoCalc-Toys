@@ -26,12 +26,12 @@ see bkgmn-w.bas notes above for same OPTIONs that must be set
 bsg1.bas - Battlestar Galactica original series.  Attempt at tactical radar display
 Could be worse.
 
-dksy.bas - Apollo 11 era DSKY homage.  Accepts the following (use ,enter. after verb and noun like V21<enter>N36<enter>):
-V21N36 - Set the time in 24-hour format
-V16N36 - Show the time
-V35N00 - Lamp test
-V16N36 - Apollo 11 landing simulation (requires the a11_descent.flac file to be
-in the same location as the .bas file)
+dksy.bas - Apollo 11 era DSKY homage.  Accepts the following (use ,enter. after verb and noun like V21\<enter\>N36\<enter\>):
+
+     V21N36 - Set the time in 24-hour format
+     V16N36 - Show the time
+     V35N00 - Lamp test
+     V16N36 - Apollo 11 landing simulation (requires the a11_descent.flac file to be in the same location as the .bas file)
 
 fire.bas - for the 8 LED strip and on-screen visualizations of fire. Something
 for a cold winter night to make you feel cozy.  Or just zone out to.

@@ -26,7 +26,7 @@ see bkgmn-w.bas notes above for same OPTIONs that must be set
 bsg1.bas - Battlestar Galactica original series.  Attempt at tactical radar display
 Could be worse.
 
-dksy.bas - Apollo 11 era DSKY homage.  Accepts the following (use ,enter. after verb and noun like V21\<enter\>N36\<enter\>):
+dksy.bas - Apollo 11 era DSKY homage.  Accepts the following (hit enter after verb and noun like V21\<enter\>N36\<enter\>):
 
      V21N36 - Set the time in 24-hour format
      V16N36 - Show the time

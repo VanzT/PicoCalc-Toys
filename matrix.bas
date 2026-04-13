@@ -1,6 +1,6 @@
-'—— Matrix Rain + 8-LED WS2812 Sync with LED On/Off Toggle — PicoMite MMBasic
+'â€”â€” Matrix Rain + 8-LED WS2812 Sync with LED On/Off Toggle â€” PicoMite MMBasic
 
-'— Screen constants —
+'â€” Screen constants â€”
 Const WIDTH = 320
 Const HEIGHT = 320
 Const COL_WIDTH = 8
@@ -9,35 +9,35 @@ Const NUM_COLS = WIDTH \ COL_WIDTH
 Const TRAIL_LENGTH = 16
 Const MAX_ACTIVE_COLS = 8
 
-'— LED constants & buffers —
+'â€” LED constants & buffers â€”
 Const LEDCOUNT = 8
 Const WHITE_THRESHOLD = 250   ' threshold for white?green transition
 Const FADE_STEP      = 20     ' fade step per frame (slower fade)
 Dim ledBuf%(LEDCOUNT - 1)     ' WS2812 RGB buffer
-Dim ledFade%(LEDCOUNT - 1)    ' per-LED fade counter (0…255)
+Dim ledFade%(LEDCOUNT - 1)    ' per-LED fade counter (0â€¦255)
 Dim ledEnabled               ' 0 = off, 1 = on
 
-'— Matrix state buffers —
+'â€” Matrix state buffers â€”
 Dim colY(NUM_COLS)            ' vertical position of head
-Dim colMode(NUM_COLS)         ' 0=idle, 1=raining, –1=blanking
+Dim colMode(NUM_COLS)         ' 0=idle, 1=raining, â€“1=blanking
 Dim colSpeed(NUM_COLS)        ' pixels per frame
 Dim fadeRGB(TRAIL_LENGTH)     ' precomputed green fade colors
 
-'— Precompute green fades for the rain trail —
+'â€” Precompute green fades for the rain trail â€”
 For i = 0 To TRAIL_LENGTH - 1
   brightness = 255 - (i * (230 \ TRAIL_LENGTH))
   If brightness < 45 Then brightness = 45
   fadeRGB(i) = RGB(0, brightness, 0)
 Next i
 
-'— Initialize —
+'â€” Initialize â€”
 CLS
 Font 1
 Randomize Timer
 ledEnabled = 0   ' start with LEDs active
 
 Do
-  '—— 0) Check for toggle key (L) ——
+  'â€”â€” 0) Check for toggle key (L) â€”â€”
   k$ = Inkey$
   If k$ = "l" Then
     ledEnabled = 1 - ledEnabled
@@ -49,8 +49,20 @@ Do
       Bitbang ws2812 o, GP28, LEDCOUNT, ledBuf%()
     EndIf
   EndIf
+ IF k$ = "q" THEN
+     ' Clear LEDs
+     FOR i=0 TO LEDCOUNT-1
+         ledBuf%(i) = 0
+         ledFade%(i) = 0
+     NEXT
+     BITBANG WS2812 O, GP28, LEDCOUNT, ledBuf%()
+     
+     ' Run menu
+     RUN "B:menu.bas"
+ END IF
 
-  '—— 1) Spawn new drops up to the MAX_ACTIVE_COLS limit ——
+
+  'â€”â€” 1) Spawn new drops up to the MAX_ACTIVE_COLS limit â€”â€”
   activeCount = 0
   For i = 0 To NUM_COLS - 1
     If colMode(i) <> 0 Then activeCount = activeCount + 1
@@ -70,7 +82,7 @@ Do
     EndIf
   Next i
 
-  '—— 2) Draw each column, update positions, and trigger LEDs ——
+  'â€”â€” 2) Draw each column, update positions, and trigger LEDs â€”â€”
   For i = 0 To NUM_COLS - 1
     If colMode(i) = 0 Then Continue For
     x = i * COL_WIDTH
@@ -135,7 +147,7 @@ Do
     EndIf
   Next i
 
-  '—— 3) Update LED fade & pack RGB values if enabled ——
+  'â€”â€” 3) Update LED fade & pack RGB values if enabled â€”â€”
   If ledEnabled Then
     For j% = 0 To LEDCOUNT - 1
       If ledFade%(j%) > 0 Then

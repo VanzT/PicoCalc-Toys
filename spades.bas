@@ -141,11 +141,14 @@ PickVariant
 
 DO
   handNum% = handNum% + 1
+  oppHSz%  = 0          ' reset opponent card count — setup rebuilds from scratch
   DoSetup
   DoBidding
   DoPlay
   DoScoring
   IF myScore% >= 500 OR oppScore% >= 500 THEN EXIT DO
+  ' Swap roles each hand — second player becomes first to draw next hand
+  myRole% = 3 - myRole%
 LOOP
 
 ShowGameOver
@@ -167,7 +170,6 @@ SUB NetPair
 
   CLS BG%
   TEXT ScrW%\2, ScrH%\2 - 10, "Waiting for opponent...", "CT", 1, 1, WHITE%, BG%
-  TEXT ScrW%\2, ScrH%\2 + 8,  "Searching...",            "CT", 1, 1, GREY%,  BG%
 
   DO
     IF TIMER - lastHello! > 500 THEN
@@ -228,11 +230,11 @@ SUB PickVariant
 
   IF myRole% = 1 THEN
     LED_Green
-    TEXT ScrW%\2, 40,  "Discard variant:",     "CT", 1, 1, WHITE%,  BG%
-    TEXT ScrW%\2, 70,  "ENTER = Face Down",     "CT", 1, 1, WHITE%,  BG%
-    TEXT ScrW%\2, 88,  "(discards hidden)",      "CT", 1, 1, GREY%,   BG%
-    TEXT ScrW%\2, 115, "SPACE = Face Up",        "CT", 1, 1, YELLOW%, BG%
-    TEXT ScrW%\2, 133, "(discards visible)",     "CT", 1, 1, GREY%,   BG%
+    TEXT ScrW%\2, 40,  "Discard variant:",      "CT", 1, 1, WHITE%,  BG%
+    TEXT ScrW%\2, 70,  "ENTER = Face Down",      "CT", 1, 1, WHITE%,  BG%
+    TEXT ScrW%\2, 88,  "(discards hidden)",       "CT", 1, 1, CYAN%,   BG%
+    TEXT ScrW%\2, 115, "SPACE = Face Up",         "CT", 1, 1, WHITE%,  BG%
+    TEXT ScrW%\2, 133, "(discards visible)",      "CT", 1, 1, CYAN%,   BG%
     chosen% = 0
     DO
       k$ = INKEY$
@@ -549,6 +551,7 @@ SUB DoBidding
     DO
       k$ = INKEY$
       IF k$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
+      IF k$ = CHR$(KEY_R%) AND lastMsg$ <> "" THEN WEB UDP SEND peer$, PORT%, lastMsg$
       IF MM.MESSAGE$ <> "" AND MM.MESSAGE$ <> lastRcvd$ THEN
         msg$      = MM.MESSAGE$
         lastRcvd$ = msg$
@@ -650,6 +653,7 @@ SUB DoPlay
   leadCard% = 0
   myTurn%   = (myRole% = 2)
   IF myTurn% THEN LED_Green ELSE LED_Off
+  DrawTurnIndicator myTurn%
 
   DO
     k$ = INKEY$
@@ -681,13 +685,12 @@ SUB DoPlay
       msg$      = MM.MESSAGE$
       lastRcvd$ = msg$
       IF LEFT$(msg$,4) = "PLAY" THEN
-        comma%        = INSTR(msg$, ",")
+        comma%         = INSTR(msg$, ",")
         oppPlayedCard% = VAL(MID$(msg$,6))
-        newBroken%    = VAL(MID$(msg$, comma%+1))
-        ' If opponent's play broke spades, update our flag and redraw hand
+        newBroken%     = VAL(MID$(msg$, comma%+1))
         IF newBroken% = 1 AND spadesBroken% = 0 THEN
           spadesBroken% = 1
-          DrawMyHand   ' redraw so our spades flip from grey to black
+          DrawMyHand
         END IF
         trickOppCard%  = oppPlayedCard%
         IF oppHSz% > 0 THEN oppHSz% = oppHSz% - 1
@@ -697,6 +700,7 @@ SUB DoPlay
         IF myPlayedCard% = 0 THEN
           myTurn% = 1
           LED_Green
+          DrawTurnIndicator 1
         ELSE
           ResolveTrick
         END IF
@@ -715,12 +719,10 @@ SUB DoScoring
 
   ' My scoring
   IF myBid% = 0 THEN
-    ' Nil bid: +100 if took 0 tricks, -100 otherwise. No other scoring.
     IF myTricks% = 0 THEN myRound% = 100 ELSE myRound% = -100
   ELSE
     IF myTricks% >= myBid% THEN
       myRound% = myBid% * 10 + (myTricks% - myBid%)
-      myBags%  = myBags% + (myTricks% - myBid%)
     ELSE
       myRound% = -(myBid% * 10)
     END IF
@@ -732,15 +734,12 @@ SUB DoScoring
   ELSE
     IF oppTricks% >= oppBid% THEN
       oppRound% = oppBid% * 10 + (oppTricks% - oppBid%)
-      oppBags%  = oppBags% + (oppTricks% - oppBid%)
     ELSE
       oppRound% = -(oppBid% * 10)
     END IF
   END IF
 
-  ' Sandbagging penalty
-  IF myBags%  >= 10 THEN myScore%  = myScore%  - 100 : myBags%  = myBags%  - 10
-  IF oppBags% >= 10 THEN oppScore% = oppScore% - 100 : oppBags% = oppBags% - 10
+  ' Sandbagging penalty already handled live in ResolveTrick
 
   myScore%  = myScore%  + myRound%
   oppScore% = oppScore% + oppRound%
@@ -756,10 +755,13 @@ SUB DoScoring
   TEXT ScrW%\2, 95,  "Opp:  bid " + oppBidStr$ + "  took " + STR$(oppTricks%),  "CT", 1, 1, CYAN%,  BG%
   TEXT ScrW%\2, 125, "Your score: " + STR$(myScore%),                            "CT", 1, 1, WHITE%, BG%
   TEXT ScrW%\2, 145, "Opp score:  " + STR$(oppScore%),                           "CT", 1, 1, CYAN%,  BG%
-  TEXT ScrW%\2, 185, "Press any key", "CT", 1, 1, GREY%, BG%
+  TEXT ScrW%\2, 185, "Press any key to continue", "CT", 1, 1, WHITE%, BG%
+  ' Flush any buffered keypresses from play phase
+  DO : LOOP UNTIL INKEY$ = ""
+  ' Now wait for a deliberate keypress
   DO
+    PAUSE 10
     IF INKEY$ <> "" THEN EXIT DO
-    IF INKEY$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
   LOOP
 END SUB
 
@@ -800,6 +802,7 @@ SUB PlayMyCard(idx%)
   RemoveCard idx%
   myTurn% = 0
   LED_Off
+  DrawTurnIndicator 0
   IF oppPlayedCard% <> 0 THEN ResolveTrick
 END SUB
 
@@ -810,10 +813,26 @@ SUB ResolveTrick
     myTricks%  = myTricks%  + 1
     myTurn%    = 1
     LED_Green
+    ' Count bag immediately if we exceeded our bid (not for nil)
+    IF myBid% > 0 AND myTricks% > myBid% THEN
+      myBags% = myBags% + 1
+      IF myBags% >= 10 THEN
+        myScore% = myScore% - 100
+        myBags%  = myBags% - 10
+      END IF
+    END IF
   ELSE
     oppTricks% = oppTricks% + 1
     myTurn%    = 0
     LED_Off
+    ' Count opponent bag immediately if they exceeded their bid (not for nil)
+    IF oppBid% > 0 AND oppTricks% > oppBid% THEN
+      oppBags% = oppBags% + 1
+      IF oppBags% >= 10 THEN
+        oppScore% = oppScore% - 100
+        oppBags%  = oppBags% - 10
+      END IF
+    END IF
   END IF
   trickNum%      = trickNum% + 1
   leadCard%      = 0
@@ -824,6 +843,7 @@ SUB ResolveTrick
   trickMyCard%  = 0
   trickOppCard% = 0
   DrawTrickArea
+  DrawTurnIndicator myTurn%
 END SUB
 
 FUNCTION TrickWinner%(myCard%, oppCard%, leadSuit%)
@@ -963,6 +983,14 @@ SUB DrawMyHand
   NEXT i%
 END SUB
 
+SUB DrawTurnIndicator(myTurn%)
+  LOCAL y% : y% = PLAYY% + PLAYH% - 14
+  BOX PLAYX%, y%, PLAYW%, 14, 1, BG%, BG%
+  IF myTurn% THEN
+    TEXT ScrW%\2, y%+2, "YOUR TURN", "CT", 1, 1, YELLOW%, BG%
+  END IF
+END SUB
+
 SUB DrawTrickArea
   LOCAL cy%, lx%, rx%
   cy% = PLAYY% + (PLAYH% - FCH%) \ 2
@@ -1024,8 +1052,8 @@ SUB DrawStatPanels
   LOCAL mx%, ox%, y%, mySc$, oppSc$
   mx% = STATW%\2 : ox% = ScrW% - STATW%\2
   y%  = OPP_Y% + CTH% + 23
-  IF myRole%  = 2 THEN mySc$  = "*" + STR$(myScore%)  ELSE mySc$  = STR$(myScore%)
-  IF myRole%  = 1 THEN oppSc$ = "*" + STR$(oppScore%) ELSE oppSc$ = STR$(oppScore%)
+  mySc$  = STR$(myScore%)
+  oppSc$ = STR$(oppScore%)
   TEXT mx%, y%, "Score",          "CT", 1, 1, WHITE%, BG%
   TEXT ox%, y%, "Score",          "CT", 1, 1, CYAN%,  BG%
   y% = y% + 13

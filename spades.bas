@@ -2,34 +2,29 @@
 ' SPADES for PicoCalc
 ' MMBasic / WebMite  ·  2-player networked
 '
-' Architecture:
-'   Phase 0 — Pairing       (NetPair)
-'   Phase 1 — Variant pick  (PickVariant)
-'   Phase 2 — Setup         (DoSetup)
-'   Phase 3 — Bidding       (DoBidding)
-'   Phase 4 — Play          (DoPlay)
-'   Phase 5 — Scoring       (DoScoring)
-'   Phases 2-5 repeat until someone reaches 500 pts
+' Phase 0 — Pairing      (NetPair)
+' Phase 1 — Variant pick (PickVariant)
+' Phase 2 — Setup        (DoSetup)
+' Phase 3 — Bidding      (DoBidding)   stub
+' Phase 4 — Play         (DoPlay)
+' Phase 5 — Scoring      (DoScoring)
 '
-' Networking (UDP port 6000, same pattern as Othello):
-'   HELLO n        — broadcast during pairing (n = random ticket)
-'   ASSIGN r       — higher-ticket device assigns roles
-'                    r=1 ? receiver is Second Player this hand
-'                    r=2 ? receiver is First Player this hand
-'   VARIANT v      — 0=face-down discards  1=face-up discards
-'   SETUP c        — setup turn done; c=discarded card (0 if face-down)
-'   BID n          — bid value (0=nil)
-'   PLAY c         — card played (encoded as suit*100+value)
-'   SYNC           — request full state resend (R key)
+' Messages:
+'   HELLO n     broadcast during pairing
+'   ASSIGN r    assigner sends role to peer (r=1 or 2)
+'   VARIANT v   0=face-down  1=face-up discards
+'   SEED n      shared deck shuffle seed
+'   SETUP c     setup turn done; c=discarded card (0=face-down)
+'   BID n       bid value (0=nil)
+'   PLAY c      card played  (suit*100+value)
 '
-' Card encoding:  suit×100 + face_value
-'   Suit:  1=Club  2=Diamond  3=Heart  4=Spade
-'   Value: 1=Ace   2-10       11=J  12=Q  13=K
+' Card encoding:  suit*100 + value
+'   Suit:  1=Club 2=Diamond 3=Heart 4=Spade
+'   Value: 1=Ace  2-10  11=J  12=Q  13=K
 '
-' Role encoding:
-'   myRole% = 1  ?  First Player  (draws first in setup)
-'   myRole% = 2  ?  Second Player (bids first, leads first trick)
-'   The asterisk in the stat panel marks the Second Player.
+' Role:  1=First Player (draws first)
+'        2=Second Player (bids first, leads first trick)
+'        Asterisk in stat panel marks Second Player.
 ' ============================================================
 OPTION BASE 1
 OPTION EXPLICIT
@@ -44,7 +39,6 @@ CONST RED%    = RGB(180,0,0)
 CONST CYAN%   = RGB(0,230,230)
 CONST YELLOW% = RGB(255,220,0)
 CONST GREY%   = RGB(160,160,160)
-CONST DKGRN%  = RGB(0,110,0)
 
 ' -- Suit codes ----------------------------------------------
 CONST CLUB%    = 1
@@ -56,8 +50,8 @@ CONST SPADE%   = 4
 CONST KEY_LEFT%  = 130
 CONST KEY_RIGHT% = 131
 CONST KEY_ENTER% = 13
-CONST KEY_R%     = 82    ' capital R — resend
-CONST KEY_Q%     = 81    ' capital Q — quit
+CONST KEY_R%     = 82
+CONST KEY_Q%     = 81
 
 ' -- Network -------------------------------------------------
 CONST PORT% = 6000
@@ -85,50 +79,54 @@ DIM PLAYW%: PLAYW%= ScrW% - 2 * STATW%
 DIM PLAYH%: PLAYH%= MY_Y% - PLAYY% - 2
 DIM PLAYX%: PLAYX%= STATW%
 
-' -- Suit bitmaps (1-based rows 1-8) -------------------------
+' -- Suit bitmaps (1-based, rows 1-8) ------------------------
 DIM SP%(8)
 DIM HT%(8)
 DIM DM%(8)
 DIM CL%(8)
 
 ' -- Deck & hands --------------------------------------------
-DIM deck%(52)       ' full shuffled deck
-DIM myHand%(13)     ' my 13 cards
-DIM oppHand%(13)    ' opponent card count (we only track count + backs)
-DIM myHSz%          ' cards remaining in my hand
-DIM oppHSz%         ' cards remaining in opp hand
+DIM deck%(52)
+DIM myHand%(13)
+DIM myHSz%
+DIM oppHSz%
 
 ' -- Game state ----------------------------------------------
-DIM myRole%         ' 1=First Player  2=Second Player
-DIM myScore%        ' cumulative score
-DIM oppScore%       ' cumulative score
-DIM myBid%          ' bid this hand (0=nil)
-DIM oppBid%         ' opponent bid
-DIM myTricks%       ' tricks won this hand
-DIM oppTricks%      ' tricks won this hand
-DIM myBags%         ' cumulative bags
-DIM oppBags%        ' cumulative bags
-DIM spadesBroken%   ' 0=not broken  1=broken
-DIM myTurn%         ' 1 = it is my turn to act
-DIM faceUpDiscard%  ' 0=face-down variant  1=face-up variant
-DIM gamePhase%      ' 0=pair 1=variant 2=setup 3=bid 4=play 5=score
-DIM handNum%        ' which hand we are on (1-based)
-DIM trickNum%       ' current trick number (1-13)
-DIM leadCard%       ' card led this trick (0 if none yet)
-DIM myPlayedCard%   ' card I played this trick
-DIM oppPlayedCard%  ' card opp played this trick
-DIM sel%            ' cursor index in my hand (1-based)
+DIM myRole%
+DIM iAmAssigner%
+DIM sharedSeed%
+DIM myScore%
+DIM oppScore%
+DIM myBid%
+DIM oppBid%
+DIM myTricks%
+DIM oppTricks%
+DIM myBags%
+DIM oppBags%
+DIM spadesBroken%
+DIM myTurn%
+DIM faceUpDiscard%
+DIM gamePhase%
+DIM handNum%
+DIM trickNum%
+DIM leadCard%
+DIM myPlayedCard%
+DIM oppPlayedCard%
+DIM sel%
+DIM deckPtr%
+DIM setupDiscard%
 
 ' -- Networking ----------------------------------------------
-DIM peer$           ' opponent IP address
-DIM myTicket%       ' random pairing ticket
-DIM assigned%       ' 1 once roles are assigned
-DIM lastMsg$        ' last sent message (for R-key resend)
-DIM lastHello!      ' timer for HELLO broadcasts
+DIM peer$
+DIM myTicket%
+DIM assigned%
+DIM lastMsg$
+DIM lastRcvd$   ' last processed MM.MESSAGE$ — prevents reprocessing same packet
+DIM lastHello!
 
-' -- Trick play area -----------------------------------------
-DIM trickMyCard%    ' card showing in my side of play area (0=none)
-DIM trickOppCard%   ' card showing in opp side of play area (0=none)
+' -- Trick display -------------------------------------------
+DIM trickMyCard%
+DIM trickOppCard%
 
 ' ============================================================
 '  MAIN
@@ -136,19 +134,17 @@ DIM trickOppCard%   ' card showing in opp side of play area (0=none)
 InitSuitPatterns
 InitLEDs
 
-NetPair          ' Phase 0 — blocks until paired
-PickVariant      ' Phase 1 — first player chooses face-up/down
+NetPair
+PickVariant
 BuildDeck
 
 DO
   handNum% = handNum% + 1
-  DoSetup          ' Phase 2
-  DoBidding        ' Phase 3
-  DoPlay           ' Phase 4
-  DoScoring        ' Phase 5
+  DoSetup
+  DoBidding
+  DoPlay
+  DoScoring
   IF myScore% >= 500 OR oppScore% >= 500 THEN EXIT DO
-  ' Role does NOT flip — it is re-randomised each hand in real Spades.
-  ' For simplicity we keep the same roles; adjust here if desired.
 LOOP
 
 ShowGameOver
@@ -157,33 +153,27 @@ END
 
 ' ============================================================
 '  PHASE 0 — NET PAIR
-'  Identical handshake pattern to Othello.
-'  Higher ticket randomly assigns roles and sends ASSIGN.
-'  Lower ticket waits for ASSIGN.
-'  Both light LEDs green once paired.
 ' ============================================================
 SUB NetPair
   LOCAL t$, src$, peerTicket%, assignedRole%
-  LOCAL comma%
 
   WEB UDP OPEN PORT%
-  myTicket% = INT(RND * 1000000) + 1
-  assigned% = 0
-  peer$     = ""
-  lastHello!= -99
+  myTicket%    = INT(RND * 1000000) + 1
+  assigned%    = 0
+  iAmAssigner% = 0
+  peer$        = ""
+  lastHello!   = -99
 
   CLS BG%
   TEXT ScrW%\2, ScrH%\2 - 10, "Waiting for opponent...", "CT", 1, 1, WHITE%, BG%
   TEXT ScrW%\2, ScrH%\2 + 8,  "Searching...",            "CT", 1, 1, GREY%,  BG%
 
   DO
-    ' Broadcast HELLO every 500 ms
     IF TIMER - lastHello! > 500 THEN
       WEB UDP SEND "255.255.255.255", PORT%, "HELLO " + STR$(myTicket%)
       lastHello! = TIMER
     END IF
 
-    ' Handle any incoming message
     IF MM.MESSAGE$ <> "" THEN
       t$   = MM.MESSAGE$
       src$ = MM.ADDRESS$
@@ -191,19 +181,17 @@ SUB NetPair
       IF LEFT$(t$,5) = "HELLO" AND assigned% = 0 THEN
         peerTicket% = VAL(MID$(t$,7))
         IF peerTicket% = myTicket% THEN
-          ' Collision — pick a new ticket
           myTicket% = INT(RND * 1000000) + 1
         ELSE
           peer$ = src$
           IF myTicket% > peerTicket% THEN
-            ' I am the assigner — randomly give Second Player role
             IF RND > 0.5 THEN assignedRole% = 2 ELSE assignedRole% = 1
-            myRole%   = 3 - assignedRole%   ' I get the other role
-            assigned% = 1
-            lastMsg$  = "ASSIGN " + STR$(assignedRole%)
+            myRole%      = 3 - assignedRole%
+            assigned%    = 1
+            iAmAssigner% = 1
+            lastMsg$     = "ASSIGN " + STR$(assignedRole%)
             WEB UDP SEND peer$, PORT%, lastMsg$
           ELSE
-            ' Nudge peer so they see me
             WEB UDP SEND peer$, PORT%, "HELLO " + STR$(myTicket%)
           END IF
         END IF
@@ -215,17 +203,15 @@ SUB NetPair
       END IF
     END IF
 
-    ' Q to quit
     IF INKEY$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
-
     PAUSE 10
   LOOP UNTIL assigned% = 1
 
-  LED_Green
+  LED_Off
   CLS BG%
   TEXT ScrW%\2, ScrH%\2 - 10, "Opponent found!", "CT", 1, 1, WHITE%, BG%
   IF myRole% = 2 THEN
-    TEXT ScrW%\2, ScrH%\2 + 8, "You lead first", "CT", 1, 1, CYAN%, BG%
+    TEXT ScrW%\2, ScrH%\2 + 8, "You lead first this hand", "CT", 1, 1, CYAN%, BG%
   ELSE
     TEXT ScrW%\2, ScrH%\2 + 8, "Opponent leads first", "CT", 1, 1, CYAN%, BG%
   END IF
@@ -234,35 +220,28 @@ END SUB
 
 ' ============================================================
 '  PHASE 1 — PICK VARIANT
-'  First Player (role 1) chooses face-up or face-down discards.
-'  Choice is sent to opponent via VARIANT message.
 ' ============================================================
 SUB PickVariant
   LOCAL k$, chosen%
   CLS BG%
 
   IF myRole% = 1 THEN
-    ' I choose
-    TEXT ScrW%\2, 40,  "Discard variant:", "CT", 1, 1, WHITE%, BG%
-    TEXT ScrW%\2, 70,  "ENTER = Face Down", "CT", 1, 1, WHITE%,  BG%
-    TEXT ScrW%\2, 90,  "(discards hidden)", "CT", 1, 1, GREY%,   BG%
-    TEXT ScrW%\2, 120, "SPACE = Face Up",   "CT", 1, 1, YELLOW%, BG%
-    TEXT ScrW%\2, 140, "(discards visible)", "CT", 1, 1, GREY%,  BG%
-
+    TEXT ScrW%\2, 40,  "Discard variant:",     "CT", 1, 1, WHITE%,  BG%
+    TEXT ScrW%\2, 70,  "ENTER = Face Down",     "CT", 1, 1, WHITE%,  BG%
+    TEXT ScrW%\2, 88,  "(discards hidden)",      "CT", 1, 1, GREY%,   BG%
+    TEXT ScrW%\2, 115, "SPACE = Face Up",        "CT", 1, 1, YELLOW%, BG%
+    TEXT ScrW%\2, 133, "(discards visible)",     "CT", 1, 1, GREY%,   BG%
     chosen% = 0
     DO
       k$ = INKEY$
-      IF k$ = CHR$(13)  THEN faceUpDiscard% = 0 : chosen% = 1
-      IF k$ = CHR$(32)  THEN faceUpDiscard% = 1 : chosen% = 1
+      IF k$ = CHR$(13) THEN faceUpDiscard% = 0 : chosen% = 1
+      IF k$ = CHR$(32) THEN faceUpDiscard% = 1 : chosen% = 1
       IF k$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
       PAUSE 10
     LOOP UNTIL chosen% = 1
-
     lastMsg$ = "VARIANT " + STR$(faceUpDiscard%)
     WEB UDP SEND peer$, PORT%, lastMsg$
-
   ELSE
-    ' I wait
     TEXT ScrW%\2, ScrH%\2, "Waiting for variant choice...", "CT", 1, 1, WHITE%, BG%
     DO
       IF MM.MESSAGE$ <> "" THEN
@@ -286,65 +265,228 @@ SUB PickVariant
 END SUB
 
 ' ============================================================
-'  PHASE 2 — SETUP  (stub)
-'  Alternating draw/discard until each player has 13 cards.
-'  First Player draws first.
+'  PHASE 2 — SETUP
 ' ============================================================
 SUB DoSetup
-  ' TODO: implement draw pile, discard pile, alternating turns
-  ' For now: deal 13 cards directly to each player
-  LOCAL i%, card%, suit%, val%
+  LOCAL setupTurn%, myCount%, oppCount%
+  LOCAL card1%, card2%, discarded%, kept%
+  LOCAL k$, msg$
 
+  IF iAmAssigner% THEN
+    sharedSeed% = INT(RND * 999983) + 1
+    lastMsg$    = "SEED " + STR$(sharedSeed%)
+    WEB UDP SEND peer$, PORT%, lastMsg$
+  ELSE
+    CLS BG%
+    TEXT ScrW%\2, ScrH%\2, "Waiting for seed...", "CT", 1, 1, WHITE%, BG%
+    DO
+      IF MM.MESSAGE$ <> "" THEN
+        msg$ = MM.MESSAGE$
+        IF LEFT$(msg$,4) = "SEED" THEN
+          sharedSeed% = VAL(MID$(msg$,6))
+          EXIT DO
+        END IF
+      END IF
+      IF INKEY$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
+      PAUSE 10
+    LOOP
+  END IF
+
+  RANDOMIZE sharedSeed%
+  BuildDeck
   ShuffleDeck
-  myHSz%  = 13
-  oppHSz% = 13
-  FOR i% = 1 TO 13
-    myHand%(i%) = deck%(i%)
-  NEXT i%
-  ' Opponent's 13 cards are deck%(14..26) — we only know count, not values
-  SortHand myHand%(), myHSz%
 
+  myHSz%        = 0 : oppHSz%      = 0
+  myCount%      = 0 : oppCount%    = 0
+  deckPtr%      = 1
+  setupDiscard% = 0
   spadesBroken% = 0
   sel%          = 1
-  myPlayedCard% = 0
-  oppPlayedCard%= 0
-  trickMyCard%  = 0
-  trickOppCard% = 0
+
+  DrawSetupScreen
+  ' Role 1 draws first — light LEDs for whoever goes first
+  LOCAL whoseTurn% : whoseTurn% = 1
+  IF myRole% = 1 THEN LED_Green ELSE LED_Off
+
+  FOR setupTurn% = 1 TO 26
+
+    card1% = deck%(deckPtr%)
+    card2% = deck%(deckPtr%+1)
+
+    IF whoseTurn% = myRole% THEN
+      LED_Green
+      DrawSetupCenterCard card1%
+      ShowSetupMsg "ENTER=Keep  SPACE=Discard"
+
+      DO
+        k$ = INKEY$
+        IF k$ = CHR$(13) THEN
+          kept%      = card1%
+          discarded% = card2%
+          EXIT DO
+        END IF
+        IF k$ = CHR$(32) THEN
+          kept%      = card2%
+          discarded% = card1%
+          EXIT DO
+        END IF
+        IF k$ = CHR$(KEY_R%) AND lastMsg$ <> "" THEN
+          WEB UDP SEND peer$, PORT%, lastMsg$
+        END IF
+        IF k$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
+        PAUSE 10
+      LOOP
+
+      myCount%          = myCount% + 1
+      myHand%(myCount%) = kept%
+      myHSz%            = myCount%
+      SortHand myHand%(), myHSz%
+
+      setupDiscard% = discarded%
+      DrawSetupCenterCard 0
+      DrawSetupDiscard discarded%
+      DrawMyHand
+
+      IF faceUpDiscard% THEN
+        lastMsg$ = "SETUP " + STR$(discarded%)
+      ELSE
+        lastMsg$ = "SETUP 0"
+      END IF
+      WEB UDP SEND peer$, PORT%, lastMsg$
+      LED_Off
+
+    ELSE
+      ' Opponent's turn — block all input except Q and R
+      LED_Off
+      DrawSetupCenterCard 0
+      ShowSetupMsg "Opponent's turn..."
+
+      DO
+        k$ = INKEY$
+        IF k$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
+        IF k$ = CHR$(KEY_R%) AND lastMsg$ <> "" THEN
+          WEB UDP SEND peer$, PORT%, lastMsg$
+        END IF
+        IF MM.MESSAGE$ <> "" AND MM.MESSAGE$ <> lastRcvd$ THEN
+          msg$      = MM.MESSAGE$
+          lastRcvd$ = msg$
+          IF LEFT$(msg$,5) = "SETUP" THEN
+            discarded% = VAL(MID$(msg$,7))
+            oppCount%  = oppCount% + 1
+            oppHSz%    = oppCount%
+            IF discarded% > 0 THEN
+              setupDiscard% = discarded%
+              DrawSetupDiscard discarded%
+            END IF
+            DrawOppHand
+            EXIT DO
+          END IF
+        END IF
+        PAUSE 10
+      LOOP
+
+    END IF
+
+    deckPtr% = deckPtr% + 2
+    IF whoseTurn% = 1 THEN whoseTurn% = 2 ELSE whoseTurn% = 1
+
+  NEXT setupTurn%
+
+  SortHand myHand%(), myHSz%
+  sel%           = 1
+  myPlayedCard%  = 0
+  oppPlayedCard% = 0
+  trickMyCard%   = 0
+  trickOppCard%  = 0
+
+  ' Clear setup center area so nothing bleeds into play screen
+  BOX PLAYX%, PLAYY%, PLAYW%, PLAYH%, 1, BG%, BG%
+
+  ShowSetupMsg "Setup complete!"
+
+  ' Sync both players before proceeding to bidding
+  ' Send SETUPDONE and wait for peer's SETUPDONE
+  LED_Off
+  lastMsg$ = "SETUPDONE"
+  WEB UDP SEND peer$, PORT%, lastMsg$
+
+  LOCAL gotDone%
+  gotDone% = 0
+  DO
+    k$ = INKEY$
+    IF k$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
+    IF k$ = CHR$(KEY_R%) THEN WEB UDP SEND peer$, PORT%, lastMsg$
+    IF MM.MESSAGE$ <> "" AND MM.MESSAGE$ <> lastRcvd$ THEN
+      msg$ = MM.MESSAGE$
+      lastRcvd$ = msg$
+      IF msg$ = "SETUPDONE" THEN gotDone% = 1
+    END IF
+    PAUSE 10
+  LOOP UNTIL gotDone% = 1
+
+  PAUSE 500
+END SUB
+
+SUB DrawSetupScreen
+  CLS BG%
+  TEXT PLAYX%+FCW%\2+2,         PLAYY%+2, "Draw",    "CT", 1, 1, GREY%, BG%
+  TEXT PLAYX%+FCW%*2+FCW%\2+10, PLAYY%+2, "Discard", "CT", 1, 1, GREY%, BG%
+  DrawFullBack PLAYX%+2, PLAYY%+14
+  DrawOppHand
+  DrawMyHand
+END SUB
+
+SUB DrawSetupDiscard(card%)
+  LOCAL dx% : dx% = PLAYX% + FCW% * 2 + 10
+  BOX dx%, PLAYY%+14, FCW%+2, FCH%+2, 1, BG%, BG%
+  IF card% > 0 THEN
+    IF faceUpDiscard% THEN
+      DrawFullCard dx%, PLAYY%+14, card%
+    ELSE
+      DrawFullBack dx%, PLAYY%+14
+    END IF
+  END IF
+END SUB
+
+SUB DrawSetupCenterCard(card%)
+  LOCAL cx% : cx% = PLAYX% + FCW% + 6
+  BOX cx%, PLAYY%+14, FCW%+2, FCH%+2, 1, BG%, BG%
+  IF card% > 0 THEN DrawFullCard cx%, PLAYY%+14, card%
+END SUB
+
+SUB ShowSetupMsg(msg$)
+  LOCAL my% : my% = PLAYY% + FCH% + 18
+  BOX PLAYX%, my%, PLAYW%, 12, 1, BG%, BG%
+  TEXT ScrW%\2, my%, msg$, "CT", 1, 1, YELLOW%, BG%
 END SUB
 
 ' ============================================================
 '  PHASE 3 — BIDDING  (stub)
-'  Second Player (role 2) bids first.
 ' ============================================================
 SUB DoBidding
-  ' TODO: implement bidding UI with nil confirmation
-  ' For now: hard-code bids
-  myBid%  = 3
-  oppBid% = 3
+  myBid%     = 3
+  oppBid%    = 3
   myTricks%  = 0
   oppTricks% = 0
-
   CLS BG%
   DrawAll
 END SUB
 
 ' ============================================================
-'  PHASE 4 — PLAY  (stub)
-'  13 tricks. Second Player leads first trick.
+'  PHASE 4 — PLAY
 ' ============================================================
 SUB DoPlay
-  LOCAL k$, msg$, cardSuit%
+  LOCAL k$, msg$
 
   trickNum% = 0
-  myTurn%   = (myRole% = 2)   ' Second Player leads first
+  leadCard% = 0
+  myTurn%   = (myRole% = 2)
+  IF myTurn% THEN LED_Green ELSE LED_Off
 
   DO
     k$ = INKEY$
-
-    ' Quit
     IF k$ = CHR$(KEY_Q%) THEN WEB UDP CLOSE : END
 
-    ' Resend
     IF k$ = CHR$(KEY_R%) THEN
       IF lastMsg$ <> "" AND peer$ <> "" THEN
         WEB UDP SEND peer$, PORT%, lastMsg$
@@ -352,7 +494,6 @@ SUB DoPlay
       END IF
     END IF
 
-    ' My turn — handle input
     IF myTurn% THEN
       SELECT CASE ASC(k$ + CHR$(0))
         CASE KEY_LEFT%
@@ -368,19 +509,18 @@ SUB DoPlay
       END SELECT
     END IF
 
-    ' Receive opponent move
-    IF MM.MESSAGE$ <> "" THEN
-      msg$ = MM.MESSAGE$
+    IF MM.MESSAGE$ <> "" AND MM.MESSAGE$ <> lastRcvd$ THEN
+      msg$      = MM.MESSAGE$
+      lastRcvd$ = msg$
       IF LEFT$(msg$,4) = "PLAY" THEN
         oppPlayedCard% = VAL(MID$(msg$,6))
         trickOppCard%  = oppPlayedCard%
         DrawTrickArea
-        ' If I have not played yet, it is now my turn
+        IF leadCard% = 0 THEN leadCard% = oppPlayedCard%
         IF myPlayedCard% = 0 THEN
           myTurn% = 1
           LED_Green
         ELSE
-          ' Both played — resolve trick
           ResolveTrick
         END IF
       END IF
@@ -391,69 +531,57 @@ SUB DoPlay
 END SUB
 
 ' ============================================================
-'  PHASE 5 — SCORING  (stub)
+'  PHASE 5 — SCORING
 ' ============================================================
 SUB DoScoring
-  ' TODO: implement full scoring with bags, nil penalties, sandbag rule
-  LOCAL myRoundScore%, oppRoundScore%
+  LOCAL myRound%, oppRound%
 
   IF myTricks% >= myBid% THEN
-    myRoundScore%  = myBid% * 10 + (myTricks% - myBid%)
-    myBags%  = myBags%  + (myTricks% - myBid%)
+    myRound% = myBid% * 10 + (myTricks% - myBid%)
+    myBags%  = myBags% + (myTricks% - myBid%)
   ELSE
-    myRoundScore%  = -(myBid% * 10)
+    myRound% = -(myBid% * 10)
   END IF
 
   IF oppTricks% >= oppBid% THEN
-    oppRoundScore% = oppBid% * 10 + (oppTricks% - oppBid%)
-    oppBags% = oppBags% + (oppTricks% - oppBid%)
+    oppRound% = oppBid% * 10 + (oppTricks% - oppBid%)
+    oppBags%  = oppBags% + (oppTricks% - oppBid%)
   ELSE
-    oppRoundScore% = -(oppBid% * 10)
+    oppRound% = -(oppBid% * 10)
   END IF
 
-  ' Sandbagging penalty
   IF myBags%  >= 10 THEN myScore%  = myScore%  - 100 : myBags%  = myBags%  - 10
   IF oppBags% >= 10 THEN oppScore% = oppScore% - 100 : oppBags% = oppBags% - 10
 
-  myScore%  = myScore%  + myRoundScore%
-  oppScore% = oppScore% + oppRoundScore%
+  myScore%  = myScore%  + myRound%
+  oppScore% = oppScore% + oppRound%
 
-  ' Show summary
   CLS BG%
   TEXT ScrW%\2, 40,  "Hand " + STR$(handNum%) + " complete", "CT", 1, 2, WHITE%, BG%
   TEXT ScrW%\2, 80,  "You:  bid " + STR$(myBid%)  + "  took " + STR$(myTricks%),  "CT", 1, 1, WHITE%, BG%
   TEXT ScrW%\2, 100, "Opp:  bid " + STR$(oppBid%) + "  took " + STR$(oppTricks%), "CT", 1, 1, CYAN%,  BG%
-  TEXT ScrW%\2, 130, "Score  You: " + STR$(myScore%)  + "  Opp: " + STR$(oppScore%), "CT", 1, 1, WHITE%, BG%
-  TEXT ScrW%\2, 160, "Press any key to continue", "CT", 1, 1, GREY%, BG%
-
+  TEXT ScrW%\2, 130, "Score   You " + STR$(myScore%) + "   Opp " + STR$(oppScore%), "CT", 1, 1, WHITE%, BG%
+  TEXT ScrW%\2, 160, "Press any key", "CT", 1, 1, GREY%, BG%
   DO : LOOP UNTIL INKEY$ <> ""
 END SUB
 
 ' ============================================================
 '  PLAY HELPERS
 ' ============================================================
-
-' Check if a card is legal to play this trick
 FUNCTION CanPlayCard%(card%)
   LOCAL suit% : suit% = card% \ 100
-
-  ' If leading (no card played yet this trick):
   IF leadCard% = 0 THEN
     IF suit% = SPADE% AND spadesBroken% = 0 THEN
-      ' Can only lead spade if hand has nothing else
       CanPlayCard% = NOT HandHasNonSpade%()
     ELSE
       CanPlayCard% = 1
     END IF
     EXIT FUNCTION
   END IF
-
-  ' Following suit — must follow if possible
   LOCAL leadSuit% : leadSuit% = leadCard% \ 100
   IF suit% = leadSuit% THEN
     CanPlayCard% = 1
   ELSE
-    ' Only legal if I have no cards of lead suit
     CanPlayCard% = NOT HandHasSuit%(leadSuit%)
   END IF
 END FUNCTION
@@ -461,37 +589,25 @@ END FUNCTION
 SUB PlayMyCard(idx%)
   LOCAL card% : card% = myHand%(idx%)
   LOCAL suit% : suit% = card% \ 100
-
-  ' Break spades if needed
   IF suit% = SPADE% AND spadesBroken% = 0 THEN
     spadesBroken% = 1
-    DrawMyHand   ' redraw with black spades
+    DrawMyHand
   END IF
-
-  ' Set lead card if I am leading
   IF leadCard% = 0 THEN leadCard% = card%
-
   myPlayedCard% = card%
   trickMyCard%  = card%
   DrawTrickArea
-
-  ' Send to opponent
   lastMsg$ = "PLAY " + STR$(card%)
   WEB UDP SEND peer$, PORT%, lastMsg$
-
-  ' Remove from hand
   RemoveCard idx%
   myTurn% = 0
   LED_Off
-
-  ' If opponent already played, resolve now
   IF oppPlayedCard% <> 0 THEN ResolveTrick
 END SUB
 
 SUB ResolveTrick
-  LOCAL winner%   ' 1=me  2=opponent
+  LOCAL winner%
   winner% = TrickWinner%(myPlayedCard%, oppPlayedCard%, leadCard% \ 100)
-
   IF winner% = 1 THEN
     myTricks%  = myTricks%  + 1
     myTurn%    = 1
@@ -501,41 +617,30 @@ SUB ResolveTrick
     myTurn%    = 0
     LED_Off
   END IF
-
-  trickNum%    = trickNum% + 1
-  leadCard%    = 0
-  myPlayedCard%= 0
-  oppPlayedCard%= 0
-
+  trickNum%      = trickNum% + 1
+  leadCard%      = 0
+  myPlayedCard%  = 0
+  oppPlayedCard% = 0
   DrawStatPanels
-
-  ' Brief pause so both players see the trick result
   PAUSE 1500
   trickMyCard%  = 0
   trickOppCard% = 0
   DrawTrickArea
 END SUB
 
-' Returns 1 if myCard wins, 2 if oppCard wins
 FUNCTION TrickWinner%(myCard%, oppCard%, leadSuit%)
   LOCAL mySuit%  : mySuit%  = myCard%  \ 100
   LOCAL oppSuit% : oppSuit% = oppCard% \ 100
   LOCAL myVal%   : myVal%   = myCard%  MOD 100
   LOCAL oppVal%  : oppVal%  = oppCard% MOD 100
-
-  ' Spades beat non-spades
+  LOCAL myEff%   : myEff%   = myVal%  : IF myVal%  = 1 THEN myEff%  = 14
+  LOCAL oppEff%  : oppEff%  = oppVal% : IF oppVal% = 1 THEN oppEff% = 14
   IF mySuit% = SPADE% AND oppSuit% <> SPADE% THEN TrickWinner% = 1 : EXIT FUNCTION
   IF oppSuit% = SPADE% AND mySuit% <> SPADE% THEN TrickWinner% = 2 : EXIT FUNCTION
-
-  ' Both same suit — higher value wins (Ace high)
   IF mySuit% = oppSuit% THEN
-    LOCAL myEff%  : myEff%  = myVal%  : IF myVal%  = 1 THEN myEff%  = 14
-    LOCAL oppEff% : oppEff% = oppVal% : IF oppVal% = 1 THEN oppEff% = 14
     IF myEff% > oppEff% THEN TrickWinner% = 1 ELSE TrickWinner% = 2
     EXIT FUNCTION
   END IF
-
-  ' Different non-spade suits — lead suit wins; off-suit loses
   IF mySuit% = leadSuit% THEN TrickWinner% = 1 ELSE TrickWinner% = 2
 END FUNCTION
 
@@ -555,16 +660,14 @@ END SUB
 
 SUB ShuffleDeck
   LOCAL i%, j%, tmp%
-  BuildDeck
   FOR i% = 52 TO 2 STEP -1
-    j% = INT(RND * i%) + 1
+    j%        = INT(RND * i%) + 1
     tmp%      = deck%(i%)
     deck%(i%) = deck%(j%)
     deck%(j%) = tmp%
   NEXT i%
 END SUB
 
-' Sort hand: by suit ascending, then value ascending within suit
 SUB SortHand(h%(), sz%)
   LOCAL i%, j%, tmp%
   FOR i% = 1 TO sz% - 1
@@ -666,25 +769,22 @@ SUB DrawTrickArea
   cy% = PLAYY% + (PLAYH% - FCH%) \ 2
   lx% = PLAYX% + PLAYW%\2 - FCW% - 8
   rx% = PLAYX% + PLAYW%\2 + 8
-  ' Clear play area
   BOX PLAYX%, PLAYY%, PLAYW%, PLAYH%, 1, BG%, BG%
   IF trickOppCard% > 0 THEN DrawFullCard lx%, cy%, trickOppCard%
   IF trickMyCard%  > 0 THEN DrawFullCard rx%, cy%, trickMyCard%
 END SUB
 
-' -- Border helper --------------------------------------------
 SUB RectBorder(x%, y%, w%, h%, col%)
-  LINE x%,     y%,     x%+w%, y%,     1, col%
-  LINE x%,     y%+1,   x%+w%, y%+1,   1, col%
-  LINE x%,     y%+h%,  x%+w%, y%+h%,  1, col%
-  LINE x%,     y%+h%-1,x%+w%, y%+h%-1,1, col%
-  LINE x%,     y%,     x%,    y%+h%,  1, col%
-  LINE x%+1,   y%,     x%+1,  y%+h%,  1, col%
-  LINE x%+w%,  y%,     x%+w%, y%+h%,  1, col%
-  LINE x%+w%-1,y%,     x%+w%-1,y%+h%, 1, col%
+  LINE x%,      y%,       x%+w%, y%,       1, col%
+  LINE x%,      y%+1,     x%+w%, y%+1,     1, col%
+  LINE x%,      y%+h%,    x%+w%, y%+h%,    1, col%
+  LINE x%,      y%+h%-1,  x%+w%, y%+h%-1,  1, col%
+  LINE x%,      y%,       x%,    y%+h%,    1, col%
+  LINE x%+1,    y%,       x%+1,  y%+h%,    1, col%
+  LINE x%+w%,   y%,       x%+w%, y%+h%,    1, col%
+  LINE x%+w%-1, y%,       x%+w%-1,y%+h%,   1, col%
 END SUB
 
-' -- Card drawing ---------------------------------------------
 SUB DrawFaceTab(x%, y%, card%, hl%)
   LOCAL s%, v%, sc%, bc%
   s%  = card% \ 100
@@ -717,49 +817,41 @@ END SUB
 SUB DrawFullBack(x%, y%)
   BOX x%, y%, FCW%, FCH%, 1, DKBLUE%, DKBLUE%
   RectBorder x%, y%, FCW%, FCH%, BLACK%
-  BOX x%+5,  y%+5,  FCW%-10, FCH%-10, 1, WHITE%, DKBLUE%
-  BOX x%+9,  y%+9,  FCW%-18, FCH%-18, 1, WHITE%, DKBLUE%
+  BOX x%+5, y%+5,  FCW%-10, FCH%-10, 1, WHITE%, DKBLUE%
+  BOX x%+9, y%+9,  FCW%-18, FCH%-18, 1, WHITE%, DKBLUE%
 END SUB
 
-' -- Stat panels ----------------------------------------------
 SUB DrawStatPanels
-  LOCAL mx%, ox%, y%, myScoreStr$, oppScoreStr$
+  LOCAL mx%, ox%, y%, mySc$, oppSc$
   mx% = STATW%\2 : ox% = ScrW% - STATW%\2
   y%  = OPP_Y% + CTH% + 23
-
-  ' Score (* marks the Second Player — leads first)
-  IF myRole% = 2 THEN myScoreStr$ = "*" + STR$(myScore%) ELSE myScoreStr$ = STR$(myScore%)
-  IF myRole% = 1 THEN oppScoreStr$ = "*" + STR$(oppScore%) ELSE oppScoreStr$ = STR$(oppScore%)
-
-  TEXT mx%, y%, "Score",      "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, "Score",      "CT", 1, 1, CYAN%,  BG%
+  IF myRole%  = 2 THEN mySc$  = "*" + STR$(myScore%)  ELSE mySc$  = STR$(myScore%)
+  IF myRole%  = 1 THEN oppSc$ = "*" + STR$(oppScore%) ELSE oppSc$ = STR$(oppScore%)
+  TEXT mx%, y%, "Score",          "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, "Score",          "CT", 1, 1, CYAN%,  BG%
   y% = y% + 13
-  TEXT mx%, y%, myScoreStr$,  "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, oppScoreStr$, "CT", 1, 1, CYAN%,  BG%
+  TEXT mx%, y%, mySc$,            "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, oppSc$,           "CT", 1, 1, CYAN%,  BG%
   y% = y% + 20
-
-  TEXT mx%, y%, "Bid",        "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, "Bid",        "CT", 1, 1, CYAN%,  BG%
+  TEXT mx%, y%, "Bid",            "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, "Bid",            "CT", 1, 1, CYAN%,  BG%
   y% = y% + 13
-  TEXT mx%, y%, STR$(myBid%),  "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, STR$(oppBid%), "CT", 1, 1, CYAN%,  BG%
+  TEXT mx%, y%, STR$(myBid%),     "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, STR$(oppBid%),    "CT", 1, 1, CYAN%,  BG%
   y% = y% + 20
-
-  TEXT mx%, y%, "Tricks",     "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, "Tricks",     "CT", 1, 1, CYAN%,  BG%
+  TEXT mx%, y%, "Tricks",         "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, "Tricks",         "CT", 1, 1, CYAN%,  BG%
   y% = y% + 13
   TEXT mx%, y%, STR$(myTricks%),  "CT", 1, 1, WHITE%, BG%
   TEXT ox%, y%, STR$(oppTricks%), "CT", 1, 1, CYAN%,  BG%
   y% = y% + 20
-
-  TEXT mx%, y%, "Bags",       "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, "Bags",       "CT", 1, 1, CYAN%,  BG%
+  TEXT mx%, y%, "Bags",           "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, "Bags",           "CT", 1, 1, CYAN%,  BG%
   y% = y% + 13
-  TEXT mx%, y%, STR$(myBags%),  "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, STR$(oppBags%), "CT", 1, 1, CYAN%,  BG%
+  TEXT mx%, y%, STR$(myBags%),    "CT", 1, 1, WHITE%, BG%
+  TEXT ox%, y%, STR$(oppBags%),   "CT", 1, 1, CYAN%,  BG%
 END SUB
 
-' -- Message flash --------------------------------------------
 SUB ShowMsg(msg$)
   BOX PLAYX%, PLAYY%, PLAYW%, 14, 1, BG%, BG%
   TEXT ScrW%\2, PLAYY%+2, msg$, "CT", 1, 1, YELLOW%, BG%
@@ -767,41 +859,34 @@ SUB ShowMsg(msg$)
   BOX PLAYX%, PLAYY%, PLAYW%, 14, 1, BG%, BG%
 END SUB
 
-' -- Game over ------------------------------------------------
 SUB ShowGameOver
   CLS BG%
   IF myScore% > oppScore% THEN
-    TEXT ScrW%\2, ScrH%\2 - 20, "YOU WIN!", "CT", 1, 3, YELLOW%, BG%
+    TEXT ScrW%\2, ScrH%\2-20, "YOU WIN!",  "CT", 1, 3, YELLOW%, BG%
   ELSEIF oppScore% > myScore% THEN
-    TEXT ScrW%\2, ScrH%\2 - 20, "You lose.", "CT", 1, 2, WHITE%, BG%
+    TEXT ScrW%\2, ScrH%\2-20, "You lose.", "CT", 1, 2, WHITE%,  BG%
   ELSE
-    TEXT ScrW%\2, ScrH%\2 - 20, "Tie game!", "CT", 1, 2, WHITE%, BG%
+    TEXT ScrW%\2, ScrH%\2-20, "Tie game!", "CT", 1, 2, WHITE%,  BG%
   END IF
-  TEXT ScrW%\2, ScrH%\2 + 20, STR$(myScore%) + " - " + STR$(oppScore%), "CT", 1, 2, CYAN%, BG%
-  TEXT ScrW%\2, ScrH%\2 + 50, "Press any key", "CT", 1, 1, GREY%, BG%
+  TEXT ScrW%\2, ScrH%\2+20, STR$(myScore%) + " - " + STR$(oppScore%), "CT", 1, 2, CYAN%, BG%
+  TEXT ScrW%\2, ScrH%\2+50, "Press any key", "CT", 1, 1, GREY%, BG%
   DO : LOOP UNTIL INKEY$ <> ""
 END SUB
 
 ' ============================================================
-'  SUIT BITMAP PATTERNS
+'  SUIT PATTERNS
 ' ============================================================
 SUB InitSuitPatterns
   SP%(1)=&H18 : SP%(2)=&H3C : SP%(3)=&H7E : SP%(4)=&HFF
   SP%(5)=&HFF : SP%(6)=&H66 : SP%(7)=&H18 : SP%(8)=&H3C
-
   HT%(1)=&H66 : HT%(2)=&HFF : HT%(3)=&HFF : HT%(4)=&H7E
   HT%(5)=&H3C : HT%(6)=&H18 : HT%(7)=&H00 : HT%(8)=&H00
-
   DM%(1)=&H10 : DM%(2)=&H38 : DM%(3)=&H7C : DM%(4)=&HFE
   DM%(5)=&H7C : DM%(6)=&H38 : DM%(7)=&H10 : DM%(8)=&H00
-
   CL%(1)=&H18 : CL%(2)=&H3C : CL%(3)=&H3C : CL%(4)=&HE7
   CL%(5)=&HE7 : CL%(6)=&H7E : CL%(7)=&H18 : CL%(8)=&H3C
 END SUB
 
-' ============================================================
-'  DRAW SUIT BITMAP  centred at (cx%, cy%), scale s%
-' ============================================================
 SUB DrawSuit(suit%, cx%, cy%, s%, col%)
   LOCAL r%, c%, pat%, x%, y%
   LOCAL x0% : x0% = cx% - 4*s%
@@ -826,7 +911,6 @@ END SUB
 ' ============================================================
 '  LEDs
 ' ============================================================
-
 SUB InitLEDs
   LED_Off
 END SUB

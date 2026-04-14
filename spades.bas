@@ -273,7 +273,7 @@ END SUB
 SUB DoSetup
   LOCAL setupTurn%, myCount%, oppCount%
   LOCAL card1%, card2%, discarded%, kept%
-  LOCAL k$, msg$, i%, p%, nxt%, idx%
+  LOCAL k$, msg$, i%, p%, nxt%, idx%, keptAlready%
 
   IF iAmAssigner% THEN
     ' Shuffle deck and send complete order as CSV to peer
@@ -335,18 +335,37 @@ SUB DoSetup
     IF whoseTurn% = myRole% THEN
       LED_Green
       DrawSetupCenterCard card1%
-      ShowSetupMsg "ENTER=Keep  SPACE=Discard"
+      ShowSetupMsg "K=Keep  D=Discard"
+      keptAlready% = 0
 
       DO
         k$ = INKEY$
-        IF k$ = CHR$(13) THEN
+        IF k$ = "k" OR k$ = "K" THEN
           kept%      = card1%
           discarded% = card2%
+          ' Add kept card to hand and show it first
+          myCount%          = myCount% + 1
+          myHand%(myCount%) = kept%
+          myHSz%            = myCount%
+          SortHand myHand%(), myHSz%
+          DrawMyHand
+          keptAlready% = 1
+          ' Now show card2 briefly before discarding it
+          DrawSetupCenterCard discarded%
+          ShowSetupMsg "Discarding..."
+          PAUSE 1000
+          DrawSetupCenterCard 0
           EXIT DO
         END IF
-        IF k$ = CHR$(32) THEN
+        IF k$ = "d" OR k$ = "D" THEN
           kept%      = card2%
           discarded% = card1%
+          ' Move discarded card to pile first, then show kept card
+          DrawSetupCenterCard 0
+          DrawSetupDiscard discarded%
+          DrawSetupCenterCard kept%
+          ShowSetupKept
+          PAUSE 2000
           EXIT DO
         END IF
         IF k$ = CHR$(KEY_R%) AND lastMsg$ <> "" THEN
@@ -356,10 +375,13 @@ SUB DoSetup
         PAUSE 10
       LOOP
 
-      myCount%          = myCount% + 1
-      myHand%(myCount%) = kept%
-      myHSz%            = myCount%
-      SortHand myHand%(), myHSz%
+      ' Add kept card to hand — only if K handler didn't already do it
+      IF keptAlready% = 0 THEN
+        myCount%          = myCount% + 1
+        myHand%(myCount%) = kept%
+        myHSz%            = myCount%
+        SortHand myHand%(), myHSz%
+      END IF
 
       setupDiscard% = discarded%
       DrawSetupCenterCard 0
@@ -448,8 +470,8 @@ END SUB
 
 SUB DrawSetupScreen
   CLS BG%
-  TEXT PLAYX%+FCW%\2+2,         PLAYY%+2, "Draw",    "CT", 1, 1, GREY%, BG%
-  TEXT PLAYX%+FCW%*2+FCW%\2+10, PLAYY%+2, "Discard", "CT", 1, 1, GREY%, BG%
+  TEXT PLAYX%+FCW%\2+2,         PLAYY%+2, "Draw",    "CT", 1, 1, WHITE%, BG%
+  TEXT PLAYX%+FCW%*2+FCW%\2+10, PLAYY%+2, "Discard", "CT", 1, 1, WHITE%, BG%
   DrawFullBack PLAYX%+2, PLAYY%+14
   DrawOppHand
   DrawMyHand
@@ -477,6 +499,12 @@ SUB ShowSetupMsg(msg$)
   LOCAL my% : my% = PLAYY% + FCH% + 18
   BOX PLAYX%, my%, PLAYW%, 12, 1, BG%, BG%
   TEXT ScrW%\2, my%, msg$, "CT", 1, 1, YELLOW%, BG%
+END SUB
+
+SUB ShowSetupKept
+  LOCAL my% : my% = PLAYY% + FCH% + 18
+  BOX PLAYX%, my%, PLAYW%, 12, 1, BG%, BG%
+  TEXT ScrW%\2, my%, "Kept!", "CT", 1, 1, RGB(0,220,0), BG%
 END SUB
 
 ' ============================================================
@@ -576,14 +604,16 @@ END FUNCTION
 ' -- Bid screen -----------------------------------------------
 SUB DrawBidScreen(bid%)
   CLS BG%
-  TEXT ScrW%\2, ScrH%\2 - 50, "Your bid:",           "CT", 1, 2, WHITE%, BG%
+  TEXT ScrW%\2, ScrH%\2 - 53, "Your bid:",           "CT", 1, 2, WHITE%, BG%
   DrawBidValue bid%
-  TEXT ScrW%\2, ScrH%\2 + 50, "UP / DOWN to change", "CT", 1, 1, GREY%,  BG%
-  TEXT ScrW%\2, ScrH%\2 + 66, "ENTER to confirm",    "CT", 1, 1, GREY%,  BG%
+  TEXT ScrW%\2, ScrH%\2 + 50, "UP / DOWN to change", "CT", 1, 1, WHITE%, BG%
+  TEXT ScrW%\2, ScrH%\2 + 66, "ENTER to confirm",    "CT", 1, 1, WHITE%, BG%
 END SUB
 
 SUB DrawBidValue(bid%)
-  BOX ScrW%\2 - 40, ScrH%\2 - 32, 80, 52, 1, BG%, BG%
+  ' Scale 4 chars are 32×32px. "10" = 64px wide centred.
+  ' Top of box must stay below "Your bid:" text (bottom edge ~ScrH%\2-37)
+  BOX ScrW%\2 - 80, ScrH%\2 - 33, 160, 66, 1, BG%, BG%
   TEXT ScrW%\2, ScrH%\2 - 10, STR$(bid%), "CT", 1, 4, YELLOW%, BG%
 END SUB
 

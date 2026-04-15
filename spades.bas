@@ -839,11 +839,25 @@ SUB ResolveTrick
   myPlayedCard%  = 0
   oppPlayedCard% = 0
   DrawStatPanels
-  PAUSE 1500
+  FlashWinningCard winner%
+  PAUSE 800
   trickMyCard%  = 0
   trickOppCard% = 0
   DrawTrickArea
   DrawTurnIndicator myTurn%
+END SUB
+
+' Briefly highlight the winning card with a yellow border
+SUB FlashWinningCard(winner%)
+  LOCAL cy%, lx%, rx%, wx%, wy%
+  cy% = PLAYY% + (PLAYH% - FCH%) \ 2
+  lx% = PLAYX% + PLAYW%\2 - FCW% - 8   ' opponent card x
+  rx% = PLAYX% + PLAYW%\2 + 8           ' my card x
+  IF winner% = 1 THEN wx% = rx% ELSE wx% = lx%
+  wy% = cy%
+  RectBorder wx%, wy%, FCW%, FCH%, YELLOW%
+  PAUSE 700
+  RectBorder wx%, wy%, FCW%, FCH%, BLACK%
 END SUB
 
 FUNCTION TrickWinner%(myCard%, oppCard%, leadSuit%)
@@ -1087,6 +1101,7 @@ SUB ShowMsg(msg$)
 END SUB
 
 SUB ShowGameOver
+  LOCAL k$
   CLS BG%
   IF myScore% > oppScore% THEN
     TEXT ScrW%\2, ScrH%\2-20, "YOU WIN!",  "CT", 1, 3, YELLOW%, BG%
@@ -1095,9 +1110,16 @@ SUB ShowGameOver
   ELSE
     TEXT ScrW%\2, ScrH%\2-20, "Tie game!", "CT", 1, 2, WHITE%,  BG%
   END IF
-  TEXT ScrW%\2, ScrH%\2+20, STR$(myScore%) + " - " + STR$(oppScore%), "CT", 1, 2, CYAN%, BG%
-  TEXT ScrW%\2, ScrH%\2+50, "Press any key", "CT", 1, 1, GREY%, BG%
-  DO : LOOP UNTIL INKEY$ <> ""
+  TEXT ScrW%\2, ScrH%\2+20, STR$(myScore%) + " - " + STR$(oppScore%), "CT", 1, 2, CYAN%,  BG%
+  TEXT ScrW%\2, ScrH%\2+50, "Press any key",  "CT", 1, 1, WHITE%, BG%
+  TEXT ScrW%\2, ScrH%\2+66, "N = Main menu",  "CT", 1, 1, GREY%,  BG%
+  DO : LOOP UNTIL INKEY$ = ""   ' flush buffer
+  DO
+    k$ = INKEY$
+    IF k$ = "N" OR k$ = "n" THEN WEB UDP CLOSE : CHAIN "B:menu.bas"
+    IF k$ <> "" THEN EXIT DO
+    PAUSE 10
+  LOOP
 END SUB
 
 ' ============================================================

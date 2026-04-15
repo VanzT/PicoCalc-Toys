@@ -339,7 +339,7 @@ SUB DoSetup
     IF whoseTurn% = myRole% THEN
       LED_Green
       DrawSetupCenterCard card1%
-      ShowSetupMsg "K=Keep  D=Discard"
+      ShowSetupMsg "D=Discard  K=Keep"
       keptAlready% = 0
 
       DO
@@ -444,10 +444,11 @@ SUB DoSetup
   trickMyCard%   = 0
   trickOppCard%  = 0
 
-  ' Clear setup center area so nothing bleeds into play screen
-  BOX PLAYX%, PLAYY%, PLAYW%, PLAYH%, 1, BG%, BG%
-
   ShowSetupMsg "Setup complete!"
+  PAUSE 1000
+
+  ' Clear setup center area so nothing bleeds into play screen
+  BOX PLAYX%-1, PLAYY%, PLAYW%+2, PLAYH%, 1, BG%, BG%
 
   ' Sync both players before proceeding to bidding
   ' Send SETUPDONE and wait for peer's SETUPDONE
@@ -521,6 +522,7 @@ SUB DoBidding
   myTricks%  = 0
   oppTricks% = 0
   curBid%    = 3
+  myBid%     = -1
   oppBid%    = -1
 
   ' Second Player bids first, First Player waits then bids
@@ -573,8 +575,11 @@ SUB DoBidding
     LED_Off
   END IF
 
+  ' Draw play screen with cards visible so player can bid intelligently
   CLS BG%
-  DrawAll
+  DrawOppHand
+  DrawMyHand
+  DrawStatPanels
 END SUB
 
 ' -- Bid selector — returns confirmed bid value ----------------
@@ -609,7 +614,8 @@ END FUNCTION
 
 ' -- Bid screen -----------------------------------------------
 SUB DrawBidScreen(bid%)
-  CLS BG%
+  BOX PLAYX%-1, PLAYY%, PLAYW%+2, PLAYH%, 1, BG%, BG%
+  DrawStatPanels
   TEXT ScrW%\2, ScrH%\2 - 53, "Your bid:",           "CT", 1, 2, WHITE%, BG%
   DrawBidValue bid%
   TEXT ScrW%\2, ScrH%\2 + 50, "UP / DOWN to change", "CT", 1, 1, WHITE%, BG%
@@ -624,14 +630,16 @@ SUB DrawBidValue(bid%)
 END SUB
 
 SUB DrawBidWait
-  CLS BG%
-  TEXT ScrW%\2, ScrH%\2, "Waiting for opponent bid...", "CT", 1, 1, WHITE%, BG%
+  BOX PLAYX%-1, PLAYY%, PLAYW%+2, PLAYH%, 1, BG%, BG%
+  DrawStatPanels
+  TEXT ScrW%\2, ScrH%\2 - 8, "Waiting for",        "CT", 1, 1, WHITE%, BG%
+  TEXT ScrW%\2, ScrH%\2 + 8, "opponent bid...",     "CT", 1, 1, WHITE%, BG%
 END SUB
 
 ' -- Nil confirmation — returns 1=confirmed 0=cancelled -------
 FUNCTION ConfirmNil%()
   LOCAL k$
-  CLS BG%
+  BOX PLAYX%-1, PLAYY%, PLAYW%+2, PLAYH%, 1, BG%, BG%
   TEXT ScrW%\2, ScrH%\2 - 50, "Bid NIL (0)?",           "CT", 1, 2, YELLOW%, BG%
   TEXT ScrW%\2, ScrH%\2 - 10, "Win NO tricks: +100 pts", "CT", 1, 1, WHITE%,  BG%
   TEXT ScrW%\2, ScrH%\2 + 8,  "Win ANY trick: -100 pts", "CT", 1, 1, WHITE%,  BG%
@@ -1043,7 +1051,7 @@ SUB DrawTrickArea
   cy% = PLAYY% + (PLAYH% - FCH%) \ 2
   lx% = PLAYX% + PLAYW%\2 - FCW% - 8
   rx% = PLAYX% + PLAYW%\2 + 8
-  BOX PLAYX%, PLAYY%, PLAYW%, PLAYH%, 1, BG%, BG%
+  BOX PLAYX%-1, PLAYY%, PLAYW%+2, PLAYH%, 1, BG%, BG%
   IF trickOppCard% > 0 THEN DrawFullCard lx%, cy%, trickOppCard%
   IF trickMyCard%  > 0 THEN DrawFullCard rx%, cy%, trickMyCard%
 END SUB
@@ -1110,8 +1118,8 @@ SUB DrawStatPanels
   TEXT mx%, y%, "Bid",            "CT", 1, 1, WHITE%, BG%
   TEXT ox%, y%, "Bid",            "CT", 1, 1, CYAN%,  BG%
   y% = y% + 13
-  TEXT mx%, y%, STR$(myBid%),     "CT", 1, 1, WHITE%, BG%
-  TEXT ox%, y%, STR$(oppBid%),    "CT", 1, 1, CYAN%,  BG%
+  IF myBid%  >= 0 THEN TEXT mx%, y%, STR$(myBid%),  "CT", 1, 1, WHITE%, BG%
+  IF oppBid% >= 0 THEN TEXT ox%, y%, STR$(oppBid%), "CT", 1, 1, CYAN%,  BG%
   y% = y% + 20
   TEXT mx%, y%, "Tricks",         "CT", 1, 1, WHITE%, BG%
   TEXT ox%, y%, "Tricks",         "CT", 1, 1, CYAN%,  BG%

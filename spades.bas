@@ -945,13 +945,21 @@ SUB SortHand(h%(), sz%)
   NEXT i%
 END SUB
 
-' Returns sort key: suit*100 + effective value (Ace=14)
+' Returns sort key for hand ordering: Diamond, Club, Heart, Spade
+' Suit codes: 1=Club 2=Diamond 3=Heart 4=Spade
+' Desired order: Diamond(2)=1, Club(1)=2, Heart(3)=3, Spade(4)=4
 FUNCTION SortKey%(card%)
-  LOCAL s%, v%
+  LOCAL s%, v%, suitOrder%
   s% = card% \ 100
   v% = card% MOD 100
-  IF v% = 1 THEN v% = 14
-  SortKey% = s% * 100 + v%
+  IF v% = 1 THEN v% = 14   ' Ace high
+  SELECT CASE s%
+    CASE DIAMOND% : suitOrder% = 1
+    CASE CLUB%    : suitOrder% = 2
+    CASE HEART%   : suitOrder% = 3
+    CASE SPADE%   : suitOrder% = 4
+  END SELECT
+  SortKey% = suitOrder% * 100 + v%
 END FUNCTION
 
 ' ============================================================

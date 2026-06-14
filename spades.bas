@@ -274,7 +274,7 @@ END SUB
 SUB DoSetup
   LOCAL setupTurn%, myCount%, oppCount%
   LOCAL card1%, card2%, discarded%, kept%
-  LOCAL k$, msg$, i%, p%, nxt%, idx%, keptAlready%
+  LOCAL k$, msg$, i%, p%, nxt%, idx%, keptAlready%, whoseTurn%, gotDone%
 
   lastRcvd$ = ""   ' clear stale messages from previous phase
 
@@ -327,11 +327,12 @@ SUB DoSetup
 
   DrawSetupScreen
   ' Role 1 draws first — light LEDs for whoever goes first
-  LOCAL whoseTurn% : whoseTurn% = 1
+  whoseTurn% = 1
   IF myRole% = 1 THEN LED_Green ELSE LED_Off
 
   FOR setupTurn% = 1 TO 26
 
+    lastRcvd$ = ""   ' clear so each turn's SETUP message is treated as fresh
     card1% = deck%(deckPtr%)
     card2% = deck%(deckPtr%+1)
 
@@ -455,7 +456,6 @@ SUB DoSetup
   lastMsg$ = "SETUPDONE"
   WEB UDP SEND peer$, PORT%, lastMsg$
 
-  LOCAL gotDone%
   gotDone% = 0
   DO
     k$ = INKEY$

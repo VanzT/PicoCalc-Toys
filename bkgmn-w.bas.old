@@ -1507,17 +1507,13 @@ DO
 
   IF myRole$ = "" OR started% = 0 THEN
     PAUSE 10
-    k$ = INKEY$
-    IF k$ = "Q" THEN WEB UDP CLOSE : RUN
-    IF k$ <> "" THEN k$ = "" ' ignore keys until paired
+    k$ = INKEY$: IF k$ <> "" THEN k$ = "" ' ignore keys until paired
     CONTINUE DO
   ENDIF
   ' block keys until opening exchange is done
   IF openingDone% = 0 THEN
     PAUSE 10
-    k$ = INKEY$
-    IF k$ = "Q" THEN WEB UDP CLOSE : RUN 
-    IF k$ <> "" THEN k$ = ""
+    k$ = INKEY$: IF k$ <> "" THEN k$ = ""
     CONTINUE DO
   END IF
 
@@ -1534,7 +1530,7 @@ DO
   END IF
   
   k$ = INKEY$
-  IF k$ = "Q" THEN WEB UDP CLOSE : RUN
+  
   ' Allow manual re-sync at any time with R
   IF k$ = "R" THEN
     IF turnIsWhite THEN nt$ = "WHITE" ELSE nt$ = "BROWN"

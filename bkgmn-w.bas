@@ -1,4 +1,4 @@
-' ============================================================================
+2' ============================================================================
 ' Backgammon Wi-Fi for PicoCalc (identical on both devices)
 ' Vance Thompson, Sept 2025
 ' https://github.com/VanzT/PicoCalc-Toys
@@ -1234,7 +1234,7 @@ END SUB
 
 SUB UpdateWonFile
   LOCAL wins%, losses%, f$, line1$, line2$
-  f$      = "B:bgmn.won"
+  f$      = "B:bkgmn.won"
   wins%   = 0
   losses% = 0
 
@@ -1285,7 +1285,7 @@ SUB ApplyGameOver(winner$)
   ' Read updated totals to display
   wins%   = 0
   losses% = 0
-  f$ = "B:bgmn.won"
+  f$ = "B:bkgmn.won"
   IF DIR$(f$) <> "" THEN
     OPEN f$ FOR INPUT AS #1
     LINE INPUT #1, line1$
